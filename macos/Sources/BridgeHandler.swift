@@ -83,6 +83,9 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
                     await MainActor.run {
                         var frame: [String: Any] = [:]
                         frame["detailed_drives"] = []
+                        frame["top_longest_drives"] = []
+                        frame["total_drives_count"] = 0
+                        frame["drives_summary"] = DriveStore.shared.getSummaryStats()
                         frame["drives_fully_synced"] = false
                         self.sendTelemetryFrame(frame)
                         self.notifySyncAllProgress(currentCount: 0, isFinished: false, isFullySynced: false)
@@ -105,7 +108,10 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
 
                         await MainActor.run {
                             var frame: [String: Any] = [:]
-                            frame["detailed_drives"] = self.buildDetailedDrives(from: merged)
+                            frame["total_drives_count"] = merged.count
+                            frame["drives_summary"] = DriveStore.shared.getSummaryStats()
+                            frame["top_longest_drives"] = self.buildDetailedDrives(from: DriveStore.shared.getTopLongestDrives(limit: 20), detectGaps: false)
+                            frame["detailed_drives"] = self.buildDetailedDrives(from: DriveStore.shared.getRecentDrives(offset: 0, limit: 50))
                             self.sendTelemetryFrame(frame)
                             self.notifySyncAllProgress(currentCount: merged.count, isFinished: false, isFullySynced: false)
                         }
@@ -126,7 +132,10 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
                     await MainActor.run {
                         var frame: [String: Any] = [:]
                         frame["drives_fully_synced"] = true
-                        frame["detailed_drives"] = self.buildDetailedDrives(from: DriveStore.shared.loadDrives())
+                        frame["total_drives_count"] = total
+                        frame["drives_summary"] = DriveStore.shared.getSummaryStats()
+                        frame["top_longest_drives"] = self.buildDetailedDrives(from: DriveStore.shared.getTopLongestDrives(limit: 20), detectGaps: false)
+                        frame["detailed_drives"] = self.buildDetailedDrives(from: DriveStore.shared.getRecentDrives(offset: 0, limit: 50))
                         self.sendTelemetryFrame(frame)
                         self.notifySyncAllProgress(currentCount: total, isFinished: true, isFullySynced: true)
                         self.showToast(message: "全量行车历史同步完成，本地共归档 \(total) 次行程")
@@ -137,6 +146,23 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
                         self.showToast(message: "同步中断: \(error.localizedDescription) (已归档 \(total) 次)")
                         self.notifySyncAllProgress(currentCount: total, isFinished: true, isFullySynced: DriveStore.shared.isFullySynced)
                     }
+                }
+            }
+            return
+        }
+
+        if action == "load_more_sidebar_drives" {
+            let offset = params["offset"] as? Int ?? 0
+            let limit = params["limit"] as? Int ?? 50
+            let nextDrivesRaw = DriveStore.shared.getRecentDrives(offset: offset, limit: limit)
+            let detailed = buildDetailedDrives(from: nextDrivesRaw)
+            let total = DriveStore.shared.getDriveCount()
+
+            if let jsonData = try? JSONSerialization.data(withJSONObject: detailed),
+               let jsonStr = String(data: jsonData, encoding: .utf8) {
+                let js = "if (typeof onMoreSidebarDrivesLoaded === 'function') { onMoreSidebarDrivesLoaded(\(offset), \(jsonStr), \(total)); }"
+                DispatchQueue.main.async { [weak self] in
+                    self?.webView?.evaluateJavaScript(js, completionHandler: nil)
                 }
             }
             return
@@ -362,7 +388,10 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
             }
 
             frame["drives_fully_synced"] = DriveStore.shared.isFullySynced
-            frame["detailed_drives"] = buildDetailedDrives(from: allMergedDrives)
+            frame["total_drives_count"] = DriveStore.shared.getDriveCount()
+            frame["drives_summary"] = DriveStore.shared.getSummaryStats()
+            frame["top_longest_drives"] = buildDetailedDrives(from: DriveStore.shared.getTopLongestDrives(limit: 20), detectGaps: false)
+            frame["detailed_drives"] = buildDetailedDrives(from: DriveStore.shared.getRecentDrives(offset: 0, limit: 50))
 
             // 7. Stabilize Parked Address against GPS Jitter
             stabilizeParkedAddress(frame: &frame, drives: allMergedDrives)
@@ -382,7 +411,7 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
     }
 
     /// Reconciles raw Tessie drives by detecting odometer jumps and inserting synthetic compensated drives.
-    private func buildDetailedDrives(from rawDrives: [[String: Any]]) -> [[String: Any]] {
+    private func buildDetailedDrives(from rawDrives: [[String: Any]], detectGaps: Bool = true) -> [[String: Any]] {
         var results: [[String: Any]] = []
 
         let startFormatter = DateFormatter()
@@ -461,7 +490,7 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
             results.append(normalDrive)
 
             // Check odometer gap between current drive and previous (older) drive
-            if i + 1 < rawDrives.count {
+            if detectGaps && i + 1 < rawDrives.count {
                 let prev = rawDrives[i + 1]
                 let currStartOdo = d["starting_odometer"] as? Double ?? 0.0
                 let prevEndOdo = prev["ending_odometer"] as? Double ?? 0.0
@@ -618,13 +647,20 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
 
     /// Delivers cached offline drives immediately to UI without waiting for network.
     public func sendInitialCachedState() {
-        let localDrives = DriveStore.shared.loadDrives()
-        guard !localDrives.isEmpty else { return }
+        let totalCount = DriveStore.shared.getDriveCount()
+        guard totalCount > 0 else { return }
+
+        let recentDrives = DriveStore.shared.getRecentDrives(offset: 0, limit: 50)
+        let topLongest = DriveStore.shared.getTopLongestDrives(limit: 20)
+        let summaryStats = DriveStore.shared.getSummaryStats()
 
         var frame: [String: Any] = [:]
         frame["drives_fully_synced"] = DriveStore.shared.isFullySynced
-        frame["detailed_drives"] = buildDetailedDrives(from: localDrives)
-        frame["drives"] = Array(localDrives.prefix(15)).reversed().compactMap { d -> [String: Any]? in
+        frame["total_drives_count"] = totalCount
+        frame["drives_summary"] = summaryStats
+        frame["top_longest_drives"] = buildDetailedDrives(from: topLongest, detectGaps: false)
+        frame["detailed_drives"] = buildDetailedDrives(from: recentDrives)
+        frame["drives"] = Array(recentDrives.prefix(15)).reversed().compactMap { d -> [String: Any]? in
             guard let energy = d["energy_used"] as? Double else { return nil }
             let startedAt = d["started_at"] as? Int ?? (d["starting_time"] as? Int ?? 0)
             let dateStr: String

@@ -3042,6 +3042,37 @@
       }
     }
 
+    if (frame.drives_summary) {
+      drivesSummaryStats = frame.drives_summary;
+      const elTrips = document.getElementById('summary-total-trips');
+      const elDist = document.getElementById('summary-total-distance');
+      const elEnergy = document.getElementById('summary-total-energy');
+      const elEff = document.getElementById('summary-avg-efficiency');
+      if (elTrips && drivesSummaryStats.total_count !== undefined) {
+        elTrips.textContent = drivesSummaryStats.total_count + ' 次';
+      }
+      if (elDist && drivesSummaryStats.total_distance_km !== undefined) {
+        elDist.textContent = drivesSummaryStats.total_distance_km.toFixed(1) + ' km';
+      }
+      if (elEnergy && drivesSummaryStats.total_energy_kwh !== undefined) {
+        elEnergy.textContent = drivesSummaryStats.total_energy_kwh.toFixed(1) + ' kWh';
+      }
+      if (elEff && drivesSummaryStats.avg_efficiency_wh_km !== undefined) {
+        elEff.textContent = drivesSummaryStats.avg_efficiency_wh_km > 0 ? drivesSummaryStats.avg_efficiency_wh_km + ' Wh/km' : '--';
+      }
+    }
+
+    if (typeof frame.total_drives_count === 'number') {
+      totalDrivesCount = frame.total_drives_count;
+      const countBadge = document.getElementById('drives-count-badge');
+      if (countBadge) countBadge.textContent = '共 ' + totalDrivesCount + ' 次行程 (本地存档)';
+    }
+
+    if (frame.top_longest_drives && Array.isArray(frame.top_longest_drives)) {
+      topLongestDrivesData = frame.top_longest_drives;
+      renderTopDrivesChart(topLongestDrivesData);
+    }
+
     if (frame.detailed_drives && Array.isArray(frame.detailed_drives)) {
       renderDetailedDrives(frame.detailed_drives);
     }
@@ -3136,7 +3167,15 @@
   let endMarker = null;
   let selectedDriveId = null;
   let allDrivesData = [];
+  let topLongestDrivesData = [];
+  let totalDrivesCount = 0;
+  let drivesSummaryStats = null;
+  let isLoadingMoreDrives = false;
   const drivingPathsCache = {};
+
+  function findDriveById(driveId) {
+    return allDrivesData.find(d => d.id === driveId) || topLongestDrivesData.find(d => d.id === driveId);
+  }
 
   // Live Real-Time Drive Tracking State
   let livePolyline = null;
@@ -3628,7 +3667,7 @@
 
   function handleSyncAllHistoryDrives() {
     if (isHistoryFullySynced) {
-      const count = allDrivesData ? allDrivesData.length : 0;
+      const count = totalDrivesCount > 0 ? totalDrivesCount : (allDrivesData ? allDrivesData.length : 0);
       const ok = confirm(`当前已完成全量历史同步（本地共归档 ${count} 次行程）。\n\n是否确认要清空本地缓存并完全重新从云端同步？`);
       if (!ok) return;
       startSyncAllHistoryDrives(true);
@@ -3697,7 +3736,9 @@
 
     // Filter valid drives with positive distance (exclude synthetic compensation jumps)
     const validDrives = drives.filter(d => !d.is_synthetic && (d.distance_km || 0) > 0);
-    validDrives.sort((a, b) => (b.distance_km || 0) - (a.distance_km || 0));
+    if (validDrives.length > 20) {
+      validDrives.sort((a, b) => (b.distance_km || 0) - (a.distance_km || 0));
+    }
 
     const top20 = validDrives.slice(0, 20);
     if (top20.length === 0) return;
@@ -3851,30 +3892,68 @@
     chartTopDrives.setOption(option);
   }
 
+  function buildDriveCardHtml(d) {
+    const isActive = (!isLiveTripSelected && d.id === selectedDriveId);
+    const isSynthetic = d.is_synthetic === true;
+    const energyStr = isSynthetic
+      ? '离线推算'
+      : (d.energy_kwh > 0 ? d.energy_kwh.toFixed(2) + ' kWh' : '< 0.1 kWh');
+    const whKm = (!isSynthetic && d.distance_km > 0 && d.energy_kwh > 0)
+      ? Math.round((d.energy_kwh * 1000) / d.distance_km) + ' Wh/km'
+      : (isSynthetic ? '无电耗' : '--');
+    const timeDisplay = d.time_range || d.date;
+    const syntheticBadge = isSynthetic
+      ? `<span style="background:rgba(217,119,6,0.18);color:#B45309;border:1px solid rgba(217,119,6,0.35);font-size:10px;padding:1px 5px;border-radius:3px;margin-left:6px;font-weight:800;">推算补偿 ⚠️</span>`
+      : '';
+    const cardBorder = isSynthetic ? 'border-style:dashed;border-color:rgba(217,119,6,0.6);background:rgba(254,243,199,0.25);' : '';
+
+    return `
+      <div id="drive-card-${d.id}" class="drive-card-item ${isActive ? 'active' : ''}" style="${cardBorder}" onclick="selectDrive(${d.id})">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-family:var(--font-mono);font-size:11px;font-weight:800;color:var(--text);letter-spacing:-0.2px;display:flex;align-items:center;">
+            ⏱️ ${timeDisplay} ${syntheticBadge}
+          </span>
+          <span style="font-family:var(--font-mono);font-size:14px;font-weight:800;color:${isSynthetic ? '#B45309' : 'var(--red)'};">${d.distance_km} km</span>
+        </div>
+        <div style="font-size:12px;font-weight:600;margin:6px 0;line-height:1.4;color:var(--text);">
+          <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${d.start_location}">🚩 ${d.start_location}</div>
+          <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;" title="${d.end_location}">🏁 ${d.end_location}</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);font-family:var(--font-mono);border-top:1px dashed rgba(0,0,0,0.15);padding-top:6px;margin-top:6px;">
+          <span>耗时 ~${d.duration_min} 分钟</span>
+          <span>⚡ ${energyStr} (${whKm})</span>
+        </div>
+      </div>
+    `;
+  }
+
   function renderDetailedDrives(drives) {
     allDrivesData = drives || [];
+    const displayTotal = totalDrivesCount > 0 ? totalDrivesCount : allDrivesData.length;
     const countBadge = document.getElementById('drives-count-badge');
-    if (countBadge) countBadge.textContent = '共 ' + allDrivesData.length + ' 次行程 (本地存档)';
+    if (countBadge) countBadge.textContent = '共 ' + displayTotal + ' 次行程 (本地存档)';
 
-    // Summary calculations
-    let totalKm = 0;
-    let totalKwh = 0;
-    allDrivesData.forEach(d => {
-      totalKm += (d.distance_km || 0);
-      totalKwh += (d.energy_kwh || 0);
-    });
+    // Summary calculations fallback if drivesSummaryStats is not available
+    if (!drivesSummaryStats) {
+      let totalKm = 0;
+      let totalKwh = 0;
+      allDrivesData.forEach(d => {
+        totalKm += (d.distance_km || 0);
+        totalKwh += (d.energy_kwh || 0);
+      });
 
-    const elTrips = document.getElementById('summary-total-trips');
-    const elDist = document.getElementById('summary-total-distance');
-    const elEnergy = document.getElementById('summary-total-energy');
-    const elEff = document.getElementById('summary-avg-efficiency');
+      const elTrips = document.getElementById('summary-total-trips');
+      const elDist = document.getElementById('summary-total-distance');
+      const elEnergy = document.getElementById('summary-total-energy');
+      const elEff = document.getElementById('summary-avg-efficiency');
 
-    if (elTrips) elTrips.textContent = allDrivesData.length + ' 次';
-    if (elDist) elDist.textContent = totalKm.toFixed(1) + ' km';
-    if (elEnergy) elEnergy.textContent = totalKwh.toFixed(1) + ' kWh';
-    if (elEff) {
-      const avgWhPerKm = totalKm > 0 ? Math.round((totalKwh * 1000) / totalKm) : 0;
-      elEff.textContent = avgWhPerKm > 0 ? avgWhPerKm + ' Wh/km' : '--';
+      if (elTrips) elTrips.textContent = displayTotal + ' 次';
+      if (elDist) elDist.textContent = totalKm.toFixed(1) + ' km';
+      if (elEnergy) elEnergy.textContent = totalKwh.toFixed(1) + ' kWh';
+      if (elEff) {
+        const avgWhPerKm = totalKm > 0 ? Math.round((totalKwh * 1000) / totalKm) : 0;
+        elEff.textContent = avgWhPerKm > 0 ? avgWhPerKm + ' Wh/km' : '--';
+      }
     }
 
     const listEl = document.getElementById('drives-list');
@@ -3887,39 +3966,19 @@
 
     let html = '';
     allDrivesData.forEach(d => {
-      const isActive = (!isLiveTripSelected && d.id === selectedDriveId);
-      const isSynthetic = d.is_synthetic === true;
-      const energyStr = isSynthetic
-        ? '离线推算'
-        : (d.energy_kwh > 0 ? d.energy_kwh.toFixed(2) + ' kWh' : '< 0.1 kWh');
-      const whKm = (!isSynthetic && d.distance_km > 0 && d.energy_kwh > 0)
-        ? Math.round((d.energy_kwh * 1000) / d.distance_km) + ' Wh/km'
-        : (isSynthetic ? '无电耗' : '--');
-      const timeDisplay = d.time_range || d.date;
-      const syntheticBadge = isSynthetic
-        ? `<span style="background:rgba(217,119,6,0.18);color:#B45309;border:1px solid rgba(217,119,6,0.35);font-size:10px;padding:1px 5px;border-radius:3px;margin-left:6px;font-weight:800;">推算补偿 ⚠️</span>`
-        : '';
-      const cardBorder = isSynthetic ? 'border-style:dashed;border-color:rgba(217,119,6,0.6);background:rgba(254,243,199,0.25);' : '';
+      html += buildDriveCardHtml(d);
+    });
 
+    if (displayTotal > allDrivesData.length) {
       html += `
-        <div id="drive-card-${d.id}" class="drive-card-item ${isActive ? 'active' : ''}" style="${cardBorder}" onclick="selectDrive(${d.id})">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-family:var(--font-mono);font-size:11px;font-weight:800;color:var(--text);letter-spacing:-0.2px;display:flex;align-items:center;">
-              ⏱️ ${timeDisplay} ${syntheticBadge}
-            </span>
-            <span style="font-family:var(--font-mono);font-size:14px;font-weight:800;color:${isSynthetic ? '#B45309' : 'var(--red)'};">${d.distance_km} km</span>
-          </div>
-          <div style="font-size:12px;font-weight:600;margin:6px 0;line-height:1.4;color:var(--text);">
-            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${d.start_location}">🚩 ${d.start_location}</div>
-            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;" title="${d.end_location}">🏁 ${d.end_location}</div>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);font-family:var(--font-mono);border-top:1px dashed rgba(0,0,0,0.15);padding-top:6px;margin-top:6px;">
-            <span>耗时 ~${d.duration_min} 分钟</span>
-            <span>⚡ ${energyStr} (${whKm})</span>
-          </div>
+        <div id="load-more-drives-container" style="padding:14px 10px;text-align:center;">
+          <button id="btn-load-more-drives" class="btn" onclick="loadMoreSidebarDrives()" style="width:100%;font-size:12px;font-family:var(--font-mono);font-weight:700;padding:8px 12px;background:var(--card-bg);border:1px solid rgba(0,0,0,0.15);border-radius:6px;cursor:pointer;">
+            ⬇️ 加载更早行程 (已显示 ${allDrivesData.length} / ${displayTotal} 次)
+          </button>
         </div>
       `;
-    });
+    }
+
     listEl.innerHTML = html;
 
     if (LiveTripTracker.isActive || LiveTripTracker.points.length > 0) {
@@ -3931,8 +3990,64 @@
       }
     }
 
-    renderTopDrivesChart(allDrivesData);
+    if (topLongestDrivesData.length === 0) {
+      renderTopDrivesChart(allDrivesData);
+    }
   }
+
+  function loadMoreSidebarDrives() {
+    if (isLoadingMoreDrives) return;
+    isLoadingMoreDrives = true;
+    const btn = document.getElementById('btn-load-more-drives');
+    if (btn) {
+      btn.textContent = '⏳ 正在拉取历史行程...';
+      btn.disabled = true;
+    }
+    window.webkit?.messageHandlers?.teslaNative?.postMessage({
+      action: 'load_more_sidebar_drives',
+      params: {
+        offset: allDrivesData.length,
+        limit: 50
+      }
+    });
+  }
+
+  window.onMoreSidebarDrivesLoaded = function(offset, nextDrives, total) {
+    isLoadingMoreDrives = false;
+    if (typeof total === 'number') totalDrivesCount = total;
+    const container = document.getElementById('load-more-drives-container');
+    const listEl = document.getElementById('drives-list');
+
+    if (!nextDrives || nextDrives.length === 0) {
+      if (container) container.remove();
+      return;
+    }
+
+    // Deduplicate against existing allDrivesData
+    const existingIds = new Set(allDrivesData.map(d => d.id));
+    const newItems = nextDrives.filter(d => !existingIds.has(d.id));
+    allDrivesData.push(...newItems);
+
+    let html = '';
+    newItems.forEach(d => {
+      html += buildDriveCardHtml(d);
+    });
+
+    if (container && container.parentNode) {
+      container.insertAdjacentHTML('beforebegin', html);
+    } else if (listEl) {
+      listEl.insertAdjacentHTML('beforeend', html);
+    }
+
+    const displayTotal = totalDrivesCount > 0 ? totalDrivesCount : allDrivesData.length;
+    const btn = document.getElementById('btn-load-more-drives');
+    if (allDrivesData.length >= displayTotal) {
+      if (container) container.remove();
+    } else if (btn) {
+      btn.textContent = `⬇️ 加载更早行程 (已显示 ${allDrivesData.length} / ${displayTotal} 次)`;
+      btn.disabled = false;
+    }
+  };
 
   function selectDrive(driveId) {
     isLiveTripSelected = false;
@@ -3948,7 +4063,7 @@
       if (liveVehicleMarker && drivesMap.hasLayer(liveVehicleMarker)) drivesMap.removeLayer(liveVehicleMarker);
     }
 
-    const drive = allDrivesData.find(d => d.id === driveId);
+    const drive = findDriveById(driveId);
     if (!drive) return;
 
     // Highlight card in list
@@ -4055,7 +4170,7 @@
     if (overlay) overlay.style.display = 'none';
 
     if (selectedDriveId === driveId && !isLiveTripSelected) {
-      const drive = allDrivesData.find(d => d.id === driveId);
+      const drive = findDriveById(driveId);
       renderPathOnMap(drivingPathsCache[driveId], drive);
     }
   };

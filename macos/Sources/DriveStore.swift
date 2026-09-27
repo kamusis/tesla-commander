@@ -29,6 +29,9 @@ public final class DriveStore {
     public func resetStore() {
         queue.sync {
             inMemoryDrives.removeAll()
+            sortedCache = nil
+            topLongestCache = nil
+            summaryStatsCache = nil
             isFullySynced = false
             try? fileManager.removeItem(at: historyFileURL)
             print("[DriveStore] Cleared local drives history for full re-sync.")
@@ -37,6 +40,9 @@ public final class DriveStore {
 
     // In-memory cache of stored drives keyed by positive Drive ID
     private var inMemoryDrives: [Int: [String: Any]] = [:]
+    private var sortedCache: [[String: Any]]? = nil
+    private var topLongestCache: [[String: Any]]? = nil
+    private var summaryStatsCache: [String: Any]? = nil
     private var isLoaded = false
 
     private init() {
@@ -86,7 +92,79 @@ public final class DriveStore {
     /// Returns all locally cached raw drives, sorted descending by start time.
     public func loadDrives() -> [[String: Any]] {
         return queue.sync {
-            return sortedDrivesList()
+            return getSortedDrives()
+        }
+    }
+
+    /// Returns a paged slice of recent raw drives, sorted descending by start time.
+    public func getRecentDrives(offset: Int = 0, limit: Int = 50) -> [[String: Any]] {
+        return queue.sync {
+            let sorted = getSortedDrives()
+            guard offset < sorted.count else { return [] }
+            let end = min(offset + limit, sorted.count)
+            return Array(sorted[offset..<end])
+        }
+    }
+
+    /// Returns the top longest drives by distance across the entire lifetime archive.
+    public func getTopLongestDrives(limit: Int = 20) -> [[String: Any]] {
+        return queue.sync {
+            if let cached = topLongestCache {
+                return Array(cached.prefix(limit))
+            }
+            let valid = inMemoryDrives.values.filter { drive in
+                let isSynthetic = drive["is_synthetic"] as? Bool ?? false
+                let dist = extractDistance(drive)
+                return !isSynthetic && dist > 0.0
+            }
+            let sortedByDist = valid.sorted { extractDistance($0) > extractDistance($1) }
+            topLongestCache = sortedByDist
+            return Array(sortedByDist.prefix(limit))
+        }
+    }
+
+    /// Precomputes lifetime driving metrics (total distance, total energy, efficiency).
+    public func getSummaryStats() -> [String: Any] {
+        return queue.sync {
+            if let cached = summaryStatsCache {
+                return cached
+            }
+            var totalDistanceKm: Double = 0.0
+            var totalEnergyKwh: Double = 0.0
+            var validEnergyDistanceKm: Double = 0.0
+
+            for drive in inMemoryDrives.values {
+                let miles = extractDistance(drive)
+                let km = miles * 1.60934
+                totalDistanceKm += km
+
+                if let energy = drive["energy_used"] as? Double, energy > 0.0 {
+                    totalEnergyKwh += energy
+                    if km > 0.0 {
+                        validEnergyDistanceKm += km
+                    }
+                }
+            }
+
+            let avgEfficiency = (validEnergyDistanceKm > 0.0 && totalEnergyKwh > 0.0)
+                ? Int(round((totalEnergyKwh * 1000.0) / validEnergyDistanceKm))
+                : 0
+
+            let stats: [String: Any] = [
+                "total_count": inMemoryDrives.count,
+                "total_distance_km": round(totalDistanceKm * 10.0) / 10.0,
+                "total_energy_kwh": round(totalEnergyKwh * 10.0) / 10.0,
+                "avg_efficiency_wh_km": avgEfficiency
+            ]
+            summaryStatsCache = stats
+            return stats
+        }
+    }
+
+    /// Retrieves a single raw drive by ID.
+    public func getDrive(id: Int) -> [String: Any]? {
+        return queue.sync {
+            return inMemoryDrives[id]
         }
     }
 
@@ -135,13 +213,16 @@ public final class DriveStore {
                 }
             }
 
-            let sorted = sortedDrivesList()
-
             if hasUpdates {
+                sortedCache = nil
+                topLongestCache = nil
+                summaryStatsCache = nil
+                let sorted = getSortedDrives()
                 saveToDisk(sorted)
+                return (sorted, newCount)
+            } else {
+                return (getSortedDrives(), 0)
             }
-
-            return (sorted, newCount)
         }
     }
 
@@ -155,6 +236,16 @@ public final class DriveStore {
         } catch {
             print("[DriveStore] Error writing drives to disk: \(error.localizedDescription)")
         }
+    }
+
+    /// Returns cached sorted drives or computes and caches them.
+    private func getSortedDrives() -> [[String: Any]] {
+        if let cached = sortedCache {
+            return cached
+        }
+        let sorted = sortedDrivesList()
+        sortedCache = sorted
+        return sorted
     }
 
     /// Helper to sort in-memory drives descending by started_at.
@@ -213,5 +304,13 @@ public final class DriveStore {
         if let num = d["started_at"] as? NSNumber, num.intValue > 0 { return num.intValue }
         if let num = d["starting_time"] as? NSNumber, num.intValue > 0 { return num.intValue }
         return 0
+    }
+
+    private func extractDistance(_ d: [String: Any]) -> Double {
+        if let dist = d["odometer_distance"] as? Double { return dist }
+        if let num = d["odometer_distance"] as? NSNumber { return num.doubleValue }
+        if let dist = d["distance_km"] as? Double { return dist / 1.60934 }
+        if let num = d["distance_km"] as? NSNumber { return num.doubleValue / 1.60934 }
+        return 0.0
     }
 }
