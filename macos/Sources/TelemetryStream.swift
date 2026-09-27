@@ -109,9 +109,20 @@ public final class TelemetryStream {
                     continue
                 }
 
-                let numVal = valDict["doubleValue"] as? Double
-                    ?? (valDict["intValue"] as? Int).map { Double($0) }
                 let strVal = valDict["stringValue"] as? String
+                var numVal: Double? = valDict["doubleValue"] as? Double
+                if numVal == nil, let iv = valDict["intValue"] as? Int {
+                    numVal = Double(iv)
+                }
+                if numVal == nil, let fv = valDict["floatValue"] as? Float {
+                    numVal = Double(fv)
+                }
+                if numVal == nil, let i64 = valDict["int64Value"] as? Int64 {
+                    numVal = Double(i64)
+                }
+                if numVal == nil, let sv = strVal {
+                    numVal = Double(sv)
+                }
 
                 switch key {
                 case "Soc":
@@ -134,17 +145,18 @@ public final class TelemetryStream {
                     if let val = numVal { normalizedFrame["speed"] = val }
                 case "Odometer":
                     if let val = numVal { normalizedFrame["odometer"] = val }
-                case "Location":
+                case "Location", "location":
                     if let locDict = valDict["locationValue"] as? [String: Any] {
                         if let lat = locDict["latitude"] as? Double { normalizedFrame["latitude"] = lat }
                         if let lng = locDict["longitude"] as? Double { normalizedFrame["longitude"] = lng }
+                        if let h = locDict["heading"] as? Double ?? (locDict["heading"] as? Int).map(Double.init) { normalizedFrame["heading"] = h }
                     }
-                case "GpsHeading", "Heading":
+                case let k where k.lowercased() == "gpsheading" || k.lowercased() == "heading" || k.lowercased() == "compassheading":
                     if let val = numVal { normalizedFrame["heading"] = val }
                 case "Power":
                     if let val = numVal { normalizedFrame["power"] = val }
-                case "Gear", "ShiftState":
-                    if let s = strVal { normalizedFrame["shift_state"] = s }
+                case let k where k.lowercased() == "gear" || k.lowercased() == "shiftstate" || k.lowercased() == "shift_state":
+                    if let s = strVal ?? (numVal != nil ? String(Int(numVal!)) : nil) { normalizedFrame["shift_state"] = s }
                 default:
                     if let val = numVal {
                         normalizedFrame[key] = val

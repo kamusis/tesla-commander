@@ -212,6 +212,9 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
                 if let shift = driveState["shift_state"] as? String {
                     frame["shift_state"] = shift
                 }
+                if let heading = driveState["heading"] as? Double ?? (driveState["heading"] as? Int).map(Double.init) {
+                    frame["heading"] = heading
+                }
             }
 
             // 5. Vehicle State

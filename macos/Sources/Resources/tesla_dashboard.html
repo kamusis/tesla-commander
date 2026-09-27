@@ -1791,7 +1791,7 @@
           <div class="drive-metric-card">
             <div class="lbl">车速指标</div>
             <div id="metric-speed" class="val" style="color:var(--blue);">-- / -- km/h</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:2px;">平均 / 最高时速</div>
+            <div id="metric-speed-sub" style="font-size:10px;color:var(--muted);margin-top:2px;">平均 / 最高时速</div>
           </div>
           <div class="drive-metric-card">
             <div class="lbl">电量消耗</div>
@@ -2489,6 +2489,11 @@
     showToast('已设定充电上限为 ' + limit + '%');
   }
 
+  // Persistent vehicle state across partial delta telemetry frames
+  let lastKnownShift = 'P';
+  let lastKnownSpeed = 0;
+  let lastKnownHeading = 0;
+
   // Native Streaming Data Frame Receiver
   window.updateTelemetryFrame = function(frame) {
     if (!frame) return;
@@ -2549,56 +2554,70 @@
       }
     }
 
-    // Dynamic GPS title, badge & top motion chip update based on shift_state / motion
-    const gpsTitleEl = document.getElementById('gps-card-title');
-    const gpsBadgeEl = document.getElementById('gps-motion-badge');
-    const chipMotionEl = document.getElementById('chip-motion');
-    const currentShift = frame.shift_state;
-    const currentSpeed = (frame.speed !== undefined && frame.speed !== null) ? Number(frame.speed) : 0;
-    const isMoving = (currentShift === 'D' || currentShift === 'R' || currentSpeed > 0);
-
-    if (gpsTitleEl) {
-      gpsTitleEl.textContent = isMoving ? '🚗 实时行驶地理位置' : '📍 当前驻车地理位置';
+    // Maintain persistent motion state across partial delta frames
+    if (frame.shift_state !== undefined && frame.shift_state !== null) {
+      lastKnownShift = String(frame.shift_state);
     }
-    if (gpsBadgeEl) {
-      if (currentShift === 'R') {
-        gpsBadgeEl.textContent = '倒车中 (R挡)';
-        gpsBadgeEl.style.borderColor = 'var(--red)';
-        gpsBadgeEl.style.color = 'var(--red)';
-      } else if (isMoving) {
-        gpsBadgeEl.textContent = currentSpeed > 0 ? `行驶中 · ${Math.round(currentSpeed)} km/h` : '行驶中 (D挡)';
-        gpsBadgeEl.style.borderColor = 'var(--blue)';
-        gpsBadgeEl.style.color = 'var(--blue)';
-      } else {
-        gpsBadgeEl.textContent = '已驻车 (P挡)';
-        gpsBadgeEl.style.borderColor = '';
-        gpsBadgeEl.style.color = '';
+    if (frame.speed !== undefined && frame.speed !== null) {
+      lastKnownSpeed = Number(frame.speed);
+    }
+    if (frame.heading !== undefined && frame.heading !== null && Number(frame.heading) > 0) {
+      lastKnownHeading = Math.round(Number(frame.heading));
+    }
+
+    const hasMotionData = (frame.shift_state !== undefined || frame.speed !== undefined);
+    const isLiveActive = (typeof LiveTripTracker !== 'undefined' && LiveTripTracker.isActive);
+    const isMoving = (lastKnownShift === 'D' || lastKnownShift === 'R' || lastKnownSpeed > 0 || isLiveActive);
+
+    // Only update motion indicators if this frame had motion data or active trip status
+    if (hasMotionData || isLiveActive) {
+      const gpsTitleEl = document.getElementById('gps-card-title');
+      const gpsBadgeEl = document.getElementById('gps-motion-badge');
+      const chipMotionEl = document.getElementById('chip-motion');
+
+      if (gpsTitleEl) {
+        gpsTitleEl.textContent = isMoving ? '🚗 实时行驶地理位置' : '📍 当前驻车地理位置';
       }
-    }
-
-    if (chipMotionEl) {
-      if (currentShift === 'R') {
-        chipMotionEl.textContent = '车辆: 倒车中 (R)';
-        chipMotionEl.className = 'chip chip-red';
-      } else if (isMoving) {
-        chipMotionEl.textContent = currentSpeed > 0 ? `车辆: 行驶中 · ${Math.round(currentSpeed)} km/h` : '车辆: 行驶中 (D)';
-        chipMotionEl.className = 'chip chip-blue';
-      } else {
-        chipMotionEl.textContent = '车辆: 已驻车';
-        chipMotionEl.className = 'chip';
+      if (gpsBadgeEl) {
+        if (lastKnownShift === 'R') {
+          gpsBadgeEl.textContent = '倒车中 (R挡)';
+          gpsBadgeEl.style.borderColor = 'var(--red)';
+          gpsBadgeEl.style.color = 'var(--red)';
+        } else if (isMoving) {
+          gpsBadgeEl.textContent = lastKnownSpeed > 0 ? `行驶中 · ${Math.round(lastKnownSpeed)} km/h` : '行驶中 (D挡)';
+          gpsBadgeEl.style.borderColor = 'var(--blue)';
+          gpsBadgeEl.style.color = 'var(--blue)';
+        } else {
+          gpsBadgeEl.textContent = '已驻车 (P挡)';
+          gpsBadgeEl.style.borderColor = '';
+          gpsBadgeEl.style.color = '';
+        }
       }
-    }
 
-    const envSpeedEl = document.getElementById('gps-env-speed');
-    if (envSpeedEl) {
-      envSpeedEl.textContent = Math.round(currentSpeed) + ' km/h';
-    }
-    const envShiftEl = document.getElementById('gps-env-shift');
-    if (envShiftEl) {
-      if (currentShift === 'R') envShiftEl.textContent = 'R 挡倒车';
-      else if (currentShift === 'D') envShiftEl.textContent = 'D 挡行驶';
-      else if (currentShift === 'N') envShiftEl.textContent = 'N 挡空挡';
-      else envShiftEl.textContent = 'P 挡驻车';
+      if (chipMotionEl) {
+        if (lastKnownShift === 'R') {
+          chipMotionEl.textContent = '车辆: 倒车中 (R)';
+          chipMotionEl.className = 'chip chip-red';
+        } else if (isMoving) {
+          chipMotionEl.textContent = lastKnownSpeed > 0 ? `车辆: 行驶中 · ${Math.round(lastKnownSpeed)} km/h` : '车辆: 行驶中 (D)';
+          chipMotionEl.className = 'chip chip-blue';
+        } else {
+          chipMotionEl.textContent = '车辆: 已驻车';
+          chipMotionEl.className = 'chip';
+        }
+      }
+
+      const envSpeedEl = document.getElementById('gps-env-speed');
+      if (envSpeedEl) {
+        envSpeedEl.textContent = Math.round(lastKnownSpeed) + ' km/h';
+      }
+      const envShiftEl = document.getElementById('gps-env-shift');
+      if (envShiftEl) {
+        if (lastKnownShift === 'R') envShiftEl.textContent = 'R 挡倒车';
+        else if (lastKnownShift === 'D') envShiftEl.textContent = 'D 挡行驶';
+        else if (lastKnownShift === 'N') envShiftEl.textContent = 'N 挡空挡';
+        else envShiftEl.textContent = 'P 挡驻车';
+      }
     }
 
     // 2. Battery & SOC
@@ -2847,6 +2866,9 @@
     window.dispatchEvent(new Event('resize'));
 
     if (tabId === 'drives') {
+      if (typeof LiveTripTracker !== 'undefined' && (LiveTripTracker.isActive || LiveTripTracker.points.length > 0)) {
+        selectLiveTrip();
+      }
       setTimeout(() => {
         initDrivesMap();
         if (drivesMap) {
@@ -2886,6 +2908,15 @@
     return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
+  function calculateBearing(lat1, lon1, lat2, lon2) {
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
+    const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+              Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
+    const brng = Math.atan2(y, x) * 180 / Math.PI;
+    return (brng + 360) % 360;
+  }
+
   function createCarMarkerIcon(heading) {
     return L.divIcon({
       className: 'live-car-marker',
@@ -2914,6 +2945,7 @@
     startAddress: '',
     currentAddress: '',
     currentSpeed: 0,
+    maxSpeed: 0,
     currentSoc: null,
     currentDistanceKm: 0,
     heading: 0,
@@ -2925,21 +2957,27 @@
     settleTimer: null,
 
     onFrame(frame) {
-      const shift = frame.shift_state;
-      const speed = (frame.speed !== undefined && frame.speed !== null) ? Number(frame.speed) : 0;
-      const lat = (frame.latitude !== undefined && frame.latitude !== null) ? Number(frame.latitude) : null;
-      const lng = (frame.longitude !== undefined && frame.longitude !== null) ? Number(frame.longitude) : null;
-      const heading = (frame.heading !== undefined && frame.heading !== null) ? Number(frame.heading) : 0;
-      const odo = (frame.odometer !== undefined && frame.odometer !== null) ? Number(frame.odometer) : 0;
-      const soc = (frame.battery_level !== undefined && frame.battery_level !== null) ? Math.round(Number(frame.battery_level)) : null;
+      if (frame.shift_state !== undefined && frame.shift_state !== null) {
+        lastKnownShift = String(frame.shift_state);
+      }
+      if (frame.speed !== undefined && frame.speed !== null) {
+        this.currentSpeed = Math.round(Number(frame.speed));
+        this.maxSpeed = Math.max(this.maxSpeed, this.currentSpeed);
+      }
+      if (frame.heading !== undefined && frame.heading !== null && Number(frame.heading) > 0) {
+        this.heading = Math.round(Number(frame.heading));
+      }
+      if (frame.battery_level !== undefined && frame.battery_level !== null) {
+        this.currentSoc = Math.round(Number(frame.battery_level));
+      }
       const address = frame.saved_location || (frame.address ? frame.address.split(',')[0] : '') || '';
-
-      if (soc !== null) this.currentSoc = soc;
-      this.currentSpeed = Math.round(speed);
-      this.heading = Math.round(heading);
       if (address) this.currentAddress = address;
 
-      const isDriving = (shift === 'D' || shift === 'R' || speed > 1);
+      const lat = (frame.latitude !== undefined && frame.latitude !== null) ? Number(frame.latitude) : null;
+      const lng = (frame.longitude !== undefined && frame.longitude !== null) ? Number(frame.longitude) : null;
+      const odo = (frame.odometer !== undefined && frame.odometer !== null) ? Number(frame.odometer) : 0;
+
+      const isDriving = (lastKnownShift === 'D' || lastKnownShift === 'R' || this.currentSpeed > 1);
 
       if (isDriving && lat && lng) {
         if (this.settleTimer) {
@@ -2948,11 +2986,11 @@
         }
 
         if (!this.isActive) {
-          this.startTrip(lat, lng, heading, odo, soc, address);
+          this.startTrip(lat, lng, this.heading, odo, this.currentSoc, address);
         } else {
-          this.appendPoint(lat, lng, heading, odo, speed);
+          this.appendPoint(lat, lng, this.heading, odo, this.currentSpeed);
         }
-      } else if (shift === 'P' || (!isDriving && speed <= 0)) {
+      } else if (lastKnownShift === 'P') {
         if (this.isActive && !this.settleTimer) {
           this.settleTimer = setTimeout(() => {
             this.finalizeTrip();
@@ -2961,6 +2999,9 @@
       }
 
       this.updateTab01Button();
+      if (isLiveTripSelected) {
+        updateLiveMetricsDisplay();
+      }
     },
 
     startTrip(lat, lng, heading, odo, soc, address) {
@@ -2976,6 +3017,7 @@
       this.lastLng = lng;
       this.points = [[lat, lng]];
       this.currentDistanceKm = 0;
+      this.maxSpeed = Math.max(this.maxSpeed, this.currentSpeed);
       this.followView = true;
 
       renderLiveTripCard();
@@ -2983,7 +3025,7 @@
       this.updateTab01Button();
 
       const drivesTabActive = document.getElementById('tab-drives')?.classList.contains('active');
-      if (drivesTabActive && !selectedDriveId) {
+      if (drivesTabActive) {
         selectLiveTrip();
       }
     },
@@ -2991,9 +3033,19 @@
     appendPoint(lat, lng, heading, odo, speed) {
       const dist = haversineDistanceMeters(this.lastLat, this.lastLng, lat, lng);
 
+      // If moving significantly (>= 2.5m), compute trajectory bearing for accurate arrow orientation
+      if (dist >= 2.5) {
+        const computedBearing = Math.round(calculateBearing(this.lastLat, this.lastLng, lat, lng));
+        if (heading <= 0 || !heading) {
+          this.heading = computedBearing;
+        } else {
+          this.heading = heading;
+        }
+      }
+
       // Deadband / drift filter: skip tiny jitter when stopped
       if (dist < 3.5 && speed <= 1.5) {
-        updateLiveVehicleMarker(lat, lng, heading);
+        updateLiveVehicleMarker(lat, lng, this.heading);
         return;
       }
 
@@ -3009,7 +3061,7 @@
       if (odo > 0) this.lastOdo = odo;
 
       updateLiveTripUI();
-      addPointToLiveMap(lat, lng, heading, this.followView);
+      addPointToLiveMap(lat, lng, this.heading, this.followView);
     },
 
     finalizeTrip() {
@@ -3284,8 +3336,14 @@
     }
 
     const mSpeed = document.getElementById('metric-speed');
+    const mSpeedSub = document.getElementById('metric-speed-sub');
     if (mSpeed) {
-      mSpeed.textContent = `${LiveTripTracker.currentSpeed} / ${LiveTripTracker.getAvgSpeed()} km/h`;
+      const avgSpd = LiveTripTracker.getAvgSpeed();
+      const maxSpd = Math.max(LiveTripTracker.maxSpeed, LiveTripTracker.currentSpeed, avgSpd);
+      mSpeed.textContent = `${avgSpd} / ${maxSpd} km/h`;
+    }
+    if (mSpeedSub) {
+      mSpeedSub.textContent = `平均 / 最高时速 (当前: ${LiveTripTracker.currentSpeed} km/h)`;
     }
 
     const mBat = document.getElementById('metric-battery');
@@ -3373,12 +3431,10 @@
     });
     listEl.innerHTML = html;
 
-    if (LiveTripTracker.isActive) {
+    if (LiveTripTracker.isActive || LiveTripTracker.points.length > 0) {
       renderLiveTripCard();
-    }
-
-    // Auto-select first drive if none selected or previous selected is not in list
-    if (!isLiveTripSelected) {
+      selectLiveTrip();
+    } else if (!isLiveTripSelected) {
       if (allDrivesData.length > 0 && (!selectedDriveId || !allDrivesData.some(d => d.id === selectedDriveId))) {
         selectDrive(allDrivesData[0].id);
       }
@@ -3444,8 +3500,12 @@
     }
 
     const mSpeed = document.getElementById('metric-speed');
+    const mSpeedSub = document.getElementById('metric-speed-sub');
     if (mSpeed) {
       mSpeed.textContent = `${drive.avg_speed_kmh} / ${drive.max_speed_kmh} km/h`;
+    }
+    if (mSpeedSub) {
+      mSpeedSub.textContent = '平均 / 最高时速';
     }
 
     const mBat = document.getElementById('metric-battery');
