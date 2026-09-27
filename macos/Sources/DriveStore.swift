@@ -13,6 +13,28 @@ public final class DriveStore {
     private let historyFileURL: URL
     private let pathsDirectory: URL
 
+    private let fullySyncedKey = "com.kamusis.TeslaCommander.drivesFullySynced"
+
+    /// Indicates whether the full lifetime driving history has been fetched and archived.
+    public var isFullySynced: Bool {
+        get {
+            UserDefaults.standard.bool(forKey: fullySyncedKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: fullySyncedKey)
+        }
+    }
+
+    /// Resets the local drive store completely for a full re-sync.
+    public func resetStore() {
+        queue.sync {
+            inMemoryDrives.removeAll()
+            isFullySynced = false
+            try? fileManager.removeItem(at: historyFileURL)
+            print("[DriveStore] Cleared local drives history for full re-sync.")
+        }
+    }
+
     // In-memory cache of stored drives keyed by positive Drive ID
     private var inMemoryDrives: [Int: [String: Any]] = [:]
     private var isLoaded = false

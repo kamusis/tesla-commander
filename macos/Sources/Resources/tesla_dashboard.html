@@ -1777,7 +1777,11 @@
       </div>
       <div style="display:flex;gap:10px;align-items:center;">
         <span id="drives-count-badge" class="header-badge">共 0 次行程 (本地存档)</span>
-        <button id="btn-fetch-more" class="btn" style="padding:4px 10px;font-size:12px;" onclick="fetchMoreHistoricalDrives()">📥 同步更多历史</button>
+        <span id="sync-history-progress" style="display:none;font-size:12px;color:var(--blue);font-weight:700;font-family:var(--font-mono);align-items:center;">
+          <span class="card-action-spinner" style="display:inline-block;width:11px;height:11px;border-width:2px;border-top-color:var(--blue);margin-right:4px;"></span>
+          <span id="sync-history-progress-text">全量同步中: 已归档 100 次...</span>
+        </span>
+        <button id="btn-sync-all-history" class="btn" style="padding:4px 10px;font-size:12px;font-weight:700;" onclick="handleSyncAllHistoryDrives()">📥 同步全量行车历史</button>
         <button class="btn" style="padding:4px 10px;font-size:12px;" onclick="triggerNativeCmd('refresh')">↻ 刷新记录</button>
       </div>
     </div>
@@ -1857,6 +1861,20 @@
             <div id="metric-battery-sub" style="font-size:10px;color:var(--muted);margin-top:2px;">消耗 -- kWh</div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Longest Single Drives All-Time Top 20 Leaderboard -->
+    <div style="margin-top:24px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px;border-bottom:2px solid var(--border);padding-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <h3 style="font-size:17px;font-weight:800;letter-spacing:-0.01em;">🏆 有史以来最长单次旅程排行 (TOP 20)</h3>
+          <span style="font-size:11px;font-family:var(--font-mono);background:var(--gold);border:1px solid #000;padding:1px 6px;border-radius:3px;font-weight:700;">ALL-TIME LONGEST DRIVES</span>
+        </div>
+        <span style="font-size:12px;color:var(--muted);font-weight:600;">💡 点击任意柱状条目，上方地图即刻加载并回放该次长途轨迹</span>
+      </div>
+      <div class="chart-box" style="height:540px;padding:16px 20px;background:var(--white);border:1px solid var(--border);box-shadow:4px 4px 0 0 var(--border);position:relative;">
+        <div id="chart-top-drives" style="width:100%;height:100%;"></div>
       </div>
     </div>
   </div>
@@ -3027,6 +3045,9 @@
     if (frame.detailed_drives && Array.isArray(frame.detailed_drives)) {
       renderDetailedDrives(frame.detailed_drives);
     }
+    if (typeof frame.drives_fully_synced === 'boolean') {
+      updateSyncAllHistoryButton(frame.drives_fully_synced);
+    }
 
     // 10. Meta, Version & Dynamic Heartbeat Clock
     if (frame.car_version) {
@@ -3103,6 +3124,7 @@
             drivesMap.fitBounds(currentDrivePolyline.getBounds(), { padding: [50, 50] });
           }
         }
+        if (chartTopDrives) chartTopDrives.resize();
       }, 150);
     }
   }
@@ -3584,27 +3606,250 @@
     }
   }
 
-  function fetchMoreHistoricalDrives() {
-    const btn = document.getElementById('btn-fetch-more');
+  let isHistoryFullySynced = false;
+  let chartTopDrives = null;
+
+  function updateSyncAllHistoryButton(fullySynced) {
+    isHistoryFullySynced = !!fullySynced;
+    const btn = document.getElementById('btn-sync-all-history');
+    if (!btn) return;
+    if (fullySynced) {
+      btn.innerHTML = '✅ 全量历史已归档';
+      btn.style.background = '#DCFCE7';
+      btn.style.color = '#166534';
+      btn.style.borderColor = '#86EFAC';
+    } else {
+      btn.innerHTML = '📥 同步全量行车历史';
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    }
+  }
+
+  function handleSyncAllHistoryDrives() {
+    if (isHistoryFullySynced) {
+      const count = allDrivesData ? allDrivesData.length : 0;
+      const ok = confirm(`当前已完成全量历史同步（本地共归档 ${count} 次行程）。\n\n是否确认要清空本地缓存并完全重新从云端同步？`);
+      if (!ok) return;
+      startSyncAllHistoryDrives(true);
+    } else {
+      startSyncAllHistoryDrives(false);
+    }
+  }
+
+  function startSyncAllHistoryDrives(reset) {
+    const btn = document.getElementById('btn-sync-all-history');
     if (btn) {
       btn.disabled = true;
-      btn.textContent = '⏳ 同步中...';
-      btn.style.opacity = '0.7';
+      btn.textContent = '⏳ 同步全量中...';
+      btn.style.opacity = '0.75';
     }
+    const prog = document.getElementById('sync-history-progress');
+    const progText = document.getElementById('sync-history-progress-text');
+    if (prog) prog.style.display = 'inline-flex';
+    if (progText) progText.textContent = reset ? '重置并重新同步中...' : '全量同步中...';
+
     window.webkit?.messageHandlers?.teslaNative?.postMessage({
-      action: 'fetch_more_drives',
-      params: {}
+      action: 'sync_all_history_drives',
+      params: { reset: reset }
     });
   }
 
-  window.onFetchMoreDrivesFinished = function(success, newCount, totalCount) {
-    const btn = document.getElementById('btn-fetch-more');
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = '📥 同步更多历史';
-      btn.style.opacity = '1';
+  window.onSyncAllHistoryProgress = function(currentCount, isFinished, isFullySynced) {
+    const prog = document.getElementById('sync-history-progress');
+    const progText = document.getElementById('sync-history-progress-text');
+    const btn = document.getElementById('btn-sync-all-history');
+
+    if (!isFinished) {
+      if (prog) prog.style.display = 'inline-flex';
+      if (progText) progText.textContent = `全量同步中: 已归档 ${currentCount} 次...`;
+    } else {
+      if (prog) prog.style.display = 'none';
+      if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      }
+      updateSyncAllHistoryButton(isFullySynced);
     }
   };
+
+  function initTopDrivesChart() {
+    const el = document.getElementById('chart-top-drives');
+    if (!el || chartTopDrives) return;
+    chartTopDrives = echarts.init(el);
+    chartTopDrives.on('click', function(params) {
+      if (params && params.data && params.data.driveId) {
+        selectDrive(params.data.driveId);
+        document.getElementById('drives-map')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        showToast(`已在上方地图加载该行程路线 (${params.data.value} km)`);
+      }
+    });
+  }
+
+  function renderTopDrivesChart(drives) {
+    initTopDrivesChart();
+    if (!chartTopDrives) return;
+
+    if (!drives || drives.length === 0) {
+      chartTopDrives.clear();
+      return;
+    }
+
+    // Filter valid drives with positive distance (exclude synthetic compensation jumps)
+    const validDrives = drives.filter(d => !d.is_synthetic && (d.distance_km || 0) > 0);
+    validDrives.sort((a, b) => (b.distance_km || 0) - (a.distance_km || 0));
+
+    const top20 = validDrives.slice(0, 20);
+    if (top20.length === 0) return;
+
+    // ECharts horizontal bar charts render bottom-up on the Y axis,
+    // so we reverse the array to make Rank 1 (#01) appear at the very top.
+    const reversed = top20.slice().reverse();
+
+    const yCategories = [];
+    const seriesData = [];
+
+    reversed.forEach(d => {
+      const rank = top20.indexOf(d) + 1;
+      let destName = (d.end_location || d.start_location || '').trim();
+      destName = destName.replace(/^日本[、,]\s*/, '').replace(/〒\d{3}-\d{4}\s*/, '');
+      const parts = destName.split(/[市区町]/);
+      let shortCity = parts[0] ? parts[0] + (destName.includes('市') ? '市' : (destName.includes('区') ? '区' : '')) : '';
+      if (!shortCity || shortCity.length > 10) shortCity = destName.slice(0, 8);
+      const datePart = d.date ? d.date.slice(5) : '';
+
+      const yLabel = `#${rank < 10 ? '0' + rank : rank}  ${datePart} ${shortCity ? '· ' + shortCity : ''}`;
+      yCategories.push(yLabel);
+
+      let barColor = '#475569';
+      if (rank === 1) {
+        barColor = '#DC2626';
+      } else if (rank <= 3) {
+        barColor = '#EA580C';
+      } else if (rank <= 10) {
+        barColor = '#2563EB';
+      }
+
+      seriesData.push({
+        value: Number(d.distance_km.toFixed(1)),
+        driveId: d.id,
+        drive: d,
+        rank: rank,
+        itemStyle: {
+          color: barColor,
+          borderColor: '#0A0A0A',
+          borderWidth: 1.5,
+          borderRadius: [0, 4, 4, 0]
+        }
+      });
+    });
+
+    const option = {
+      grid: {
+        left: 175,
+        right: 80,
+        top: 20,
+        bottom: 30
+      },
+      tooltip: {
+        trigger: 'item',
+        backgroundColor: '#FFFBEB',
+        borderColor: '#0A0A0A',
+        borderWidth: 2,
+        padding: [12, 16],
+        textStyle: {
+          color: '#0A0A0A',
+          fontFamily: 'Sora, sans-serif',
+          fontSize: 12
+        },
+        extraCssText: 'box-shadow: 4px 4px 0 0 #0A0A0A; border-radius: 6px;',
+        formatter: function(params) {
+          const d = params.data.drive;
+          const rank = params.data.rank;
+          const whKm = (d.distance_km > 0 && d.energy_kwh > 0)
+            ? Math.round((d.energy_kwh * 1000) / d.distance_km) + ' Wh/km'
+            : '--';
+          return `
+            <div style="font-family:var(--font-mono);font-weight:800;font-size:13px;border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:16px;">
+              <span>🏆 第 ${rank} 名最长单次旅程</span>
+              <span style="color:#DC2626;font-size:15px;">${d.distance_km} km</span>
+            </div>
+            <div style="font-size:12px;line-height:1.7;">
+              <div><b>📅 日期时间:</b> ${d.date} (${d.time_range || ''}) · 耗时约 ${d.duration_min || '--'} 分钟</div>
+              <div><b>🚩 出发起点:</b> ${d.start_location || '（未记录）'}</div>
+              <div><b>🎯 到达终点:</b> ${d.end_location || '（未记录）'}</div>
+              <div><b>⚡ 能耗表现:</b> ${d.energy_kwh ? d.energy_kwh + ' kWh' : '--'} (${whKm})</div>
+              <div><b>🚗 速度指标:</b> 平均 ${d.avg_speed_kmh || '--'} km/h · 最高 ${d.max_speed_kmh || '--'} km/h</div>
+            </div>
+            <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #CBD5E1;font-size:11px;color:#2563EB;font-weight:700;">
+              👉 点击本柱状条，上方 GPS 地图即刻回放该次路线
+            </div>
+          `;
+        }
+      },
+      xAxis: {
+        type: 'value',
+        name: '里程 (km)',
+        nameTextStyle: {
+          fontFamily: 'JetBrains Mono',
+          fontSize: 11,
+          color: '#64748B'
+        },
+        axisLabel: {
+          fontFamily: 'JetBrains Mono',
+          fontWeight: '700',
+          color: '#0A0A0A'
+        },
+        splitLine: {
+          lineStyle: {
+            color: '#E2E8F0',
+            type: 'dashed'
+          }
+        }
+      },
+      yAxis: {
+        type: 'category',
+        data: yCategories,
+        axisLabel: {
+          fontFamily: 'JetBrains Mono',
+          fontWeight: '700',
+          color: '#0A0A0A',
+          fontSize: 11
+        },
+        axisLine: {
+          lineStyle: {
+            color: '#0A0A0A',
+            width: 2
+          }
+        },
+        axisTick: {
+          show: true,
+          lineStyle: {
+            color: '#0A0A0A',
+            width: 2
+          }
+        }
+      },
+      series: [
+        {
+          type: 'bar',
+          barWidth: 16,
+          data: seriesData,
+          label: {
+            show: true,
+            position: 'right',
+            formatter: '{c} km',
+            fontFamily: 'JetBrains Mono',
+            fontWeight: '800',
+            color: '#0A0A0A',
+            fontSize: 11
+          }
+        }
+      ]
+    };
+
+    chartTopDrives.setOption(option);
+  }
 
   function renderDetailedDrives(drives) {
     allDrivesData = drives || [];
@@ -3685,6 +3930,8 @@
         selectDrive(allDrivesData[0].id);
       }
     }
+
+    renderTopDrivesChart(allDrivesData);
   }
 
   function selectDrive(driveId) {
@@ -4073,6 +4320,7 @@
     chartBattery.resize();
     chartCharges.resize();
     chartDrives.resize();
+    if (chartTopDrives) chartTopDrives.resize();
   });
 </script>
 

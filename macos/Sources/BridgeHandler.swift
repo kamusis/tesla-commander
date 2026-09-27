@@ -75,25 +75,67 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
             return
         }
 
-        if action == "fetch_more_drives" {
+        if action == "sync_all_history_drives" {
+            let isReset = params["reset"] as? Bool ?? false
             Task {
-                do {
-                    let oldestTime = DriveStore.shared.getOldestDriveTimestamp()
-                    let incoming = try await client.fetchDrives(limit: 50, to: oldestTime)
-                    let (merged, newCount) = DriveStore.shared.mergeDrives(incoming: incoming)
+                if isReset {
+                    DriveStore.shared.resetStore()
                     await MainActor.run {
                         var frame: [String: Any] = [:]
-                        frame["detailed_drives"] = self.buildDetailedDrives(from: merged)
+                        frame["detailed_drives"] = []
+                        frame["drives_fully_synced"] = false
                         self.sendTelemetryFrame(frame)
-                        let total = merged.count
-                        let msg = newCount > 0 ? "已增量归档 \(newCount) 条更早行程 (本地共 \(total) 次)" : "已同步至云端最早记录 (本地共 \(total) 次)"
-                        self.showToast(message: msg)
-                        self.notifyFetchMoreFinished(success: true, newCount: newCount, totalCount: total)
+                        self.notifySyncAllProgress(currentCount: 0, isFinished: false, isFullySynced: false)
+                    }
+                }
+
+                var isComplete = false
+
+                do {
+                    while !isComplete {
+                        let oldestTime = DriveStore.shared.getOldestDriveTimestamp()
+                        let incoming = try await client.fetchDrives(limit: 100, to: oldestTime)
+
+                        if incoming.isEmpty {
+                            isComplete = true
+                            break
+                        }
+
+                        let (merged, newCount) = DriveStore.shared.mergeDrives(incoming: incoming)
+
+                        await MainActor.run {
+                            var frame: [String: Any] = [:]
+                            frame["detailed_drives"] = self.buildDetailedDrives(from: merged)
+                            self.sendTelemetryFrame(frame)
+                            self.notifySyncAllProgress(currentCount: merged.count, isFinished: false, isFullySynced: false)
+                        }
+
+                        // If no new records were added, we have reached the end of unseen history
+                        if newCount == 0 {
+                            isComplete = true
+                            break
+                        }
+
+                        // Pause 200ms between batches to respect Tessie rate limits
+                        try await Task.sleep(nanoseconds: 200_000_000)
+                    }
+
+                    DriveStore.shared.isFullySynced = true
+                    let total = DriveStore.shared.getDriveCount()
+
+                    await MainActor.run {
+                        var frame: [String: Any] = [:]
+                        frame["drives_fully_synced"] = true
+                        frame["detailed_drives"] = self.buildDetailedDrives(from: DriveStore.shared.loadDrives())
+                        self.sendTelemetryFrame(frame)
+                        self.notifySyncAllProgress(currentCount: total, isFinished: true, isFullySynced: true)
+                        self.showToast(message: "全量行车历史同步完成，本地共归档 \(total) 次行程")
                     }
                 } catch {
+                    let total = DriveStore.shared.getDriveCount()
                     await MainActor.run {
-                        self.showToast(message: "拉取历史行程失败: \(error.localizedDescription)")
-                        self.notifyFetchMoreFinished(success: false, newCount: 0, totalCount: DriveStore.shared.getDriveCount())
+                        self.showToast(message: "同步中断: \(error.localizedDescription) (已归档 \(total) 次)")
+                        self.notifySyncAllProgress(currentCount: total, isFinished: true, isFullySynced: DriveStore.shared.isFullySynced)
                     }
                 }
             }
@@ -319,6 +361,7 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
                 return ["date": dateStr, "energy": energy]
             }
 
+            frame["drives_fully_synced"] = DriveStore.shared.isFullySynced
             frame["detailed_drives"] = buildDetailedDrives(from: allMergedDrives)
 
             // 7. Stabilize Parked Address against GPS Jitter
@@ -579,6 +622,7 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
         guard !localDrives.isEmpty else { return }
 
         var frame: [String: Any] = [:]
+        frame["drives_fully_synced"] = DriveStore.shared.isFullySynced
         frame["detailed_drives"] = buildDetailedDrives(from: localDrives)
         frame["drives"] = Array(localDrives.prefix(15)).reversed().compactMap { d -> [String: Any]? in
             guard let energy = d["energy_used"] as? Double else { return nil }
@@ -597,9 +641,9 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
         sendTelemetryFrame(frame)
     }
 
-    /// Notifies the web view that an incremental history fetch has finished.
-    public func notifyFetchMoreFinished(success: Bool, newCount: Int, totalCount: Int) {
-        let js = "if (typeof onFetchMoreDrivesFinished === 'function') { onFetchMoreDrivesFinished(\(success), \(newCount), \(totalCount)); }"
+    /// Notifies the web view of full history synchronization progress.
+    public func notifySyncAllProgress(currentCount: Int, isFinished: Bool, isFullySynced: Bool) {
+        let js = "if (typeof onSyncAllHistoryProgress === 'function') { onSyncAllHistoryProgress(\(currentCount), \(isFinished), \(isFullySynced)); }"
         DispatchQueue.main.async { [weak self] in
             self?.webView?.evaluateJavaScript(js, completionHandler: nil)
         }
