@@ -1733,8 +1733,9 @@
         </div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;">
-        <span id="drives-count-badge" class="header-badge">共 0 次行程</span>
-        <button class="btn" onclick="triggerNativeCmd('refresh')">↻ 刷新记录</button>
+        <span id="drives-count-badge" class="header-badge">共 0 次行程 (本地存档)</span>
+        <button id="btn-fetch-more" class="btn" style="padding:4px 10px;font-size:12px;" onclick="fetchMoreHistoricalDrives()">📥 同步更多历史</button>
+        <button class="btn" style="padding:4px 10px;font-size:12px;" onclick="triggerNativeCmd('refresh')">↻ 刷新记录</button>
       </div>
     </div>
 
@@ -1743,7 +1744,7 @@
       <div class="scorecard" style="padding: 12px 14px;">
         <div class="sc-label">最近记录行程</div>
         <div class="sc-value" id="summary-total-trips" style="font-size: 20px; margin: 4px 0 2px;">--</div>
-        <div class="sc-sub">云端持久化已归档</div>
+        <div class="sc-sub">本地持久化已归档</div>
       </div>
       <div class="scorecard" style="padding: 12px 14px;">
         <div class="sc-label">累计行驶里程</div>
@@ -3374,10 +3375,32 @@
     }
   }
 
+  function fetchMoreHistoricalDrives() {
+    const btn = document.getElementById('btn-fetch-more');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳ 同步中...';
+      btn.style.opacity = '0.7';
+    }
+    window.webkit?.messageHandlers?.teslaNative?.postMessage({
+      action: 'fetch_more_drives',
+      params: {}
+    });
+  }
+
+  window.onFetchMoreDrivesFinished = function(success, newCount, totalCount) {
+    const btn = document.getElementById('btn-fetch-more');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '📥 同步更多历史';
+      btn.style.opacity = '1';
+    }
+  };
+
   function renderDetailedDrives(drives) {
     allDrivesData = drives || [];
     const countBadge = document.getElementById('drives-count-badge');
-    if (countBadge) countBadge.textContent = '共 ' + allDrivesData.length + ' 次行程';
+    if (countBadge) countBadge.textContent = '共 ' + allDrivesData.length + ' 次行程 (本地存档)';
 
     // Summary calculations
     let totalKm = 0;

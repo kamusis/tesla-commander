@@ -51,15 +51,49 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
             if driveId < 0 {
                 return
             }
+
+            // 1. Check local persistent disk cache first (0ms latency)
+            if let cachedPoints = DriveStore.shared.getCachedPath(driveId: driveId) {
+                self.sendDrivingPathToUI(driveId: driveId, points: cachedPoints)
+                return
+            }
+
+            // 2. Fetch from cloud and cache locally
             Task {
                 do {
                     let points = try await client.fetchDrivingPath(from: from, to: to, details: true)
+                    DriveStore.shared.savePath(driveId: driveId, points: points)
                     await MainActor.run {
                         self.sendDrivingPathToUI(driveId: driveId, points: points)
                     }
                 } catch {
                     await MainActor.run {
                         self.showToast(message: "拉取轨迹失败: \(error.localizedDescription)")
+                    }
+                }
+            }
+            return
+        }
+
+        if action == "fetch_more_drives" {
+            Task {
+                do {
+                    let oldestTime = DriveStore.shared.getOldestDriveTimestamp()
+                    let incoming = try await client.fetchDrives(limit: 50, to: oldestTime)
+                    let (merged, newCount) = DriveStore.shared.mergeDrives(incoming: incoming)
+                    await MainActor.run {
+                        var frame: [String: Any] = [:]
+                        frame["detailed_drives"] = self.buildDetailedDrives(from: merged)
+                        self.sendTelemetryFrame(frame)
+                        let total = merged.count
+                        let msg = newCount > 0 ? "已增量归档 \(newCount) 条更早行程 (本地共 \(total) 次)" : "已同步至云端最早记录 (本地共 \(total) 次)"
+                        self.showToast(message: msg)
+                        self.notifyFetchMoreFinished(success: true, newCount: newCount, totalCount: total)
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.showToast(message: "拉取历史行程失败: \(error.localizedDescription)")
+                        self.notifyFetchMoreFinished(success: false, newCount: 0, totalCount: DriveStore.shared.getDriveCount())
                     }
                 }
             }
@@ -132,11 +166,15 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
             showToast(message: "正在拉取全量数据快照...")
         }
         do {
+            let syncLimit = DriveStore.shared.getDriveCount() == 0 ? 100 : 50
             async let stateTask = client.fetchState()
             async let locationTask = client.fetchLocation()
             async let chargesTask = client.fetchCharges(limit: 8)
-            async let drivesTask = client.fetchDrives(limit: 20)
+            async let drivesTask = client.fetchDrives(limit: syncLimit)
             let (state, location, charges, drives) = try await (stateTask, locationTask, chargesTask, drivesTask)
+
+            // Merge cloud drives into local persistent store
+            let (allMergedDrives, newCount) = DriveStore.shared.mergeDrives(incoming: drives)
 
             var frame: [String: Any] = [:]
             frame["vin"] = client.vin
@@ -266,7 +304,7 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
                 return ["date": dateStr, "energy": energy]
             }
 
-            frame["drives"] = drives.reversed().compactMap { d -> [String: Any]? in
+            frame["drives"] = Array(allMergedDrives.prefix(15)).reversed().compactMap { d -> [String: Any]? in
                 guard let energy = d["energy_used"] as? Double else { return nil }
                 let startedAt = d["started_at"] as? Int ?? (d["starting_time"] as? Int ?? 0)
                 let dateStr: String
@@ -281,10 +319,10 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
                 return ["date": dateStr, "energy": energy]
             }
 
-            frame["detailed_drives"] = buildDetailedDrives(from: drives)
+            frame["detailed_drives"] = buildDetailedDrives(from: allMergedDrives)
 
             // 7. Stabilize Parked Address against GPS Jitter
-            stabilizeParkedAddress(frame: &frame, drives: drives)
+            stabilizeParkedAddress(frame: &frame, drives: allMergedDrives)
 
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -292,7 +330,8 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
 
             self.sendTelemetryFrame(frame)
             if manual {
-                self.showToast(message: "已同步全量实时数据 (200 OK)")
+                let msg = newCount > 0 ? "已同步最新数据 (新增 \(newCount) 条，本地共 \(allMergedDrives.count) 条)" : "已同步最新数据 (本地共 \(allMergedDrives.count) 条行程)"
+                self.showToast(message: msg)
             }
         } catch {
             self.showToast(message: "同步快照失败: \(error.localizedDescription)")
@@ -529,6 +568,38 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
             .replacingOccurrences(of: "'", with: "\\'")
             .replacingOccurrences(of: "\n", with: " ")
         let js = "if (typeof onCommandFinished === 'function') { onCommandFinished('\(escapedAction)', \(success), '\(escapedMsg)'); }"
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
+    /// Delivers cached offline drives immediately to UI without waiting for network.
+    public func sendInitialCachedState() {
+        let localDrives = DriveStore.shared.loadDrives()
+        guard !localDrives.isEmpty else { return }
+
+        var frame: [String: Any] = [:]
+        frame["detailed_drives"] = buildDetailedDrives(from: localDrives)
+        frame["drives"] = Array(localDrives.prefix(15)).reversed().compactMap { d -> [String: Any]? in
+            guard let energy = d["energy_used"] as? Double else { return nil }
+            let startedAt = d["started_at"] as? Int ?? (d["starting_time"] as? Int ?? 0)
+            let dateStr: String
+            if startedAt > 0 {
+                let dt = Date(timeIntervalSince1970: TimeInterval(startedAt))
+                let f = DateFormatter()
+                f.dateFormat = "MM/dd HH:mm"
+                dateStr = f.string(from: dt)
+            } else {
+                dateStr = "--"
+            }
+            return ["date": dateStr, "energy": energy]
+        }
+        sendTelemetryFrame(frame)
+    }
+
+    /// Notifies the web view that an incremental history fetch has finished.
+    public func notifyFetchMoreFinished(success: Bool, newCount: Int, totalCount: Int) {
+        let js = "if (typeof onFetchMoreDrivesFinished === 'function') { onFetchMoreDrivesFinished(\(success), \(newCount), \(totalCount)); }"
         DispatchQueue.main.async { [weak self] in
             self?.webView?.evaluateJavaScript(js, completionHandler: nil)
         }

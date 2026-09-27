@@ -51,10 +51,17 @@ public final class TessieClient {
         return try await request(path: "/\(activeVin)/location", method: "GET")
     }
 
-    /// Fetches historical driving sessions.
-    public func fetchDrives(limit: Int = 20) async throws -> [[String: Any]] {
+    /// Fetches historical driving sessions with optional pagination.
+    public func fetchDrives(limit: Int = 50, from: Int? = nil, to: Int? = nil) async throws -> [[String: Any]] {
         let activeVin = try await resolveVin()
-        let resp = try await request(path: "/\(activeVin)/drives", method: "GET", queryParams: ["limit": "\(limit)"])
+        var queryParams: [String: String] = ["limit": "\(limit)"]
+        if let from = from {
+            queryParams["from"] = "\(from)"
+        }
+        if let to = to {
+            queryParams["to"] = "\(to)"
+        }
+        let resp = try await request(path: "/\(activeVin)/drives", method: "GET", queryParams: queryParams)
         return resp["results"] as? [[String: Any]] ?? []
     }
 

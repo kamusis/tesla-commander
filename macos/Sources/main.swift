@@ -167,6 +167,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         decisionHandler(.allow)
     }
 
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // Instantly populate dashboard with locally cached trips (0ms network delay)
+        self.bridgeHandler.sendInitialCachedState()
+    }
+
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         // Intercept target="_blank" links and open in macOS system browser
         if let url = navigationAction.request.url {
