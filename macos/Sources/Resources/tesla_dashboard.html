@@ -1,0 +1,2010 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tesla Commander — Moomin Y (Model Y) 数据可视化看板</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #FFFBEB;
+      --white: #FFFFFF;
+      --border: #000000;
+      --gold: #FEF3C7;
+      --red: #E11D48;
+      --red-light: #FFE4E6;
+      --blue: #2563EB;
+      --blue-light: #DBEAFE;
+      --green: #16A34A;
+      --green-light: #DCFCE7;
+      --text: #0A0A0A;
+      --muted: #525252;
+      --font-sans: 'Sora', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    .channel-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-inner {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 54px;
+      gap: 16px;
+    }
+
+    .channel-name {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .channel-name .hash { color: var(--red); font-size: 18px; font-weight: 800; }
+
+    .header-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      background: var(--gold);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--text);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22C55E;
+      box-shadow: 0 0 0 3px rgba(34,197,94,0.2);
+      display: inline-block;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+      70% { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--white);
+      color: var(--text);
+      text-decoration: none;
+      box-shadow: 2px 2px 0 0 var(--border);
+      transition: transform 100ms, box-shadow 100ms;
+    }
+
+    .btn:hover {
+      transform: translate(2px, 2px);
+      box-shadow: -2px -2px 0 0 var(--border);
+    }
+
+    .btn-primary { background: var(--text); color: var(--white); }
+    .btn-primary:hover { box-shadow: -2px -2px 0 0 #555; }
+
+    .btn-red { background: var(--red); color: var(--white); border-color: var(--border); }
+    .btn-green { background: var(--green); color: var(--white); border-color: var(--border); }
+
+    /* ── TABS ── */
+    .tabs-bar {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tabs-inner {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      overflow-x: auto;
+    }
+
+    .tab {
+      padding: 12px 18px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      user-select: none;
+      transition: color 100ms;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .tab.active { color: var(--text); border-bottom-color: var(--text); }
+    .tab:hover:not(.active) { color: var(--text); }
+
+    /* ── LAYOUT ── */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .main {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 32px 24px 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    /* ── HERO ── */
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .hero-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .eyebrow-text {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+    }
+
+    .hero h1 {
+      font-size: clamp(24px, 3.2vw, 36px);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+      margin-bottom: 10px;
+    }
+
+    .hero-desc {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.65;
+      margin-bottom: 18px;
+    }
+
+    .hero-meta-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .chip {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      background: var(--gold);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--text);
+    }
+
+    .chip-green { background: var(--green-light); border-color: var(--green); color: #166534; font-weight: 700; }
+    .chip-blue { background: var(--blue-light); border-color: var(--blue); color: #1E40AF; font-weight: 700; }
+    .chip-red { background: var(--red-light); border-color: var(--red); color: #9F1239; font-weight: 700; }
+
+    /* Hero sidebar stat card */
+    .hero-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 18px;
+      box-shadow: 2px 2px 0 0 var(--border);
+      transition: transform 100ms, box-shadow 100ms;
+    }
+
+    .hero-card:hover {
+      transform: translate(2px, 2px);
+      box-shadow: -2px -2px 0 0 var(--border);
+    }
+
+    .card-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .stat-cell {
+      padding: 10px 12px;
+      background: var(--bg);
+      border-right: 1px solid rgba(0,0,0,0.12);
+      border-bottom: 1px solid rgba(0,0,0,0.12);
+    }
+
+    .stat-cell:nth-child(even) { border-right: none; }
+    .stat-cell:nth-last-child(-n+2) { border-bottom: none; }
+
+    .stat-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+
+    .stat-value { font-size: 15px; font-weight: 800; margin-top: 3px; font-family: var(--font-mono); }
+
+    /* ── SCORECARDS GRID ── */
+    .scorecard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+    }
+
+    .scorecard {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 2px 2px 0 0 var(--border);
+      transition: transform 100ms, box-shadow 100ms;
+    }
+
+    .scorecard:hover {
+      transform: translate(2px, 2px);
+      box-shadow: -2px -2px 0 0 var(--border);
+    }
+
+    .sc-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .sc-value {
+      font-family: var(--font-mono);
+      font-size: 24px;
+      font-weight: 800;
+      margin: 8px 0 4px;
+      color: var(--text);
+    }
+
+    .sc-sub {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    /* ── SECTION HEADER ── */
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+      padding-bottom: 8px;
+    }
+
+    .section-title { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+
+    .section-meta {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    /* ── CHARTS ── */
+    .chart-grid-2x2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .chart-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 18px;
+      box-shadow: 2px 2px 0 0 var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 380px;
+    }
+
+    .chart-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .chart-card-title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .chart-box {
+      flex: 1;
+      width: 100%;
+      min-height: 300px;
+    }
+
+    /* ── TIRES SPECIAL WIDGET ── */
+    .tire-matrix {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .tire-cell {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 14px;
+      text-align: center;
+      position: relative;
+    }
+
+    .tire-cell.normal { border-left: 5px solid var(--green); }
+
+    .tire-name { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--muted); }
+    .tire-val { font-family: var(--font-mono); font-size: 22px; font-weight: 800; margin: 4px 0; }
+    .tire-status { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--green); }
+
+    /* ── CONTROL CONSOLE WIDGET ── */
+    .control-deck {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .control-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 18px;
+      box-shadow: 2px 2px 0 0 var(--border);
+    }
+
+    .control-card-title {
+      font-size: 14px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .control-desc {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    .code-pill {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: var(--bg);
+      border: 1px solid rgba(0,0,0,0.15);
+      padding: 6px 10px;
+      border-radius: 3px;
+      display: block;
+      margin-bottom: 12px;
+      word-break: break-all;
+    }
+
+    /* ── DATA TABLES ── */
+    .table-container {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      box-shadow: 2px 2px 0 0 var(--border);
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    th {
+      background: var(--bg);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(0,0,0,0.08);
+      font-family: var(--font-sans);
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(254, 243, 199, 0.4); }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--text);
+      color: var(--gold);
+      padding: 12px 20px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      box-shadow: 3px 3px 0 var(--border);
+      display: none;
+      z-index: 9999;
+      animation: fadeIn 0.2s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .native-input {
+      flex: 1;
+      padding: 8px 12px;
+      font-family: var(--font-sans);
+      font-size: 13px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      outline: none;
+    }
+    .native-input:focus {
+      background: var(--white);
+      box-shadow: 2px 2px 0 var(--border);
+    }
+    .temp-stepper {
+      display: inline-flex;
+      align-items: center;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      box-shadow: 1px 1px 0 var(--border);
+    }
+    .temp-stepper button {
+      border: none;
+      background: transparent;
+      padding: 6px 12px;
+      font-weight: 800;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .temp-stepper button:hover { background: var(--gold); }
+    .temp-stepper span {
+      padding: 0 10px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      margin-top: 48px;
+      border-top: 1px solid var(--border);
+      background: var(--white);
+      padding: 24px;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* ── TAB 05 DRIVES & TRIPS ── */
+    .drives-container {
+      display: flex;
+      gap: 24px;
+      margin-top: 16px;
+      align-items: flex-start;
+    }
+
+    .drives-sidebar {
+      width: 38%;
+      min-width: 340px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .drives-list-box {
+      background: var(--white);
+      border: 1px solid var(--border);
+      box-shadow: 4px 4px 0 0 var(--border);
+      max-height: 640px;
+      overflow-y: auto;
+    }
+
+    .drive-card-item {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 100ms ease;
+      background: var(--white);
+    }
+
+    .drive-card-item:last-child {
+      border-bottom: none;
+    }
+
+    .drive-card-item:hover {
+      background: #FFFBEB;
+    }
+
+    .drive-card-item.active {
+      background: var(--gold);
+      border-left: 5px solid var(--red);
+    }
+
+    .drives-main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .map-card-container {
+      background: var(--white);
+      border: 1px solid var(--border);
+      box-shadow: 4px 4px 0 0 var(--border);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .map-header-bar {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #FAF8F5;
+    }
+
+    #drives-map {
+      width: 100%;
+      height: 420px;
+      background: #E2E8F0;
+      z-index: 10;
+    }
+
+    .drive-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .drive-metric-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      padding: 12px 14px;
+      box-shadow: 2px 2px 0 0 var(--border);
+    }
+
+    .drive-metric-card .val {
+      font-family: var(--font-mono);
+      font-size: 16px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    .drive-metric-card .lbl {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .leaflet-popup-content-wrapper {
+      border: 1px solid var(--border) !important;
+      border-radius: 4px !important;
+      box-shadow: 2px 2px 0 0 var(--border) !important;
+      font-family: var(--font-mono) !important;
+      font-size: 12px !important;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .hero { grid-template-columns: 1fr; }
+      .chart-grid-2x2 { grid-template-columns: 1fr; }
+      .drives-container { flex-direction: column; }
+      .drives-sidebar { width: 100%; }
+      .drive-metrics-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════ HEADER ═══════════════════════ -->
+<header class="channel-header">
+  <div class="nav-inner">
+    <div class="channel-name">
+      <span class="hash">#</span>
+      <span>tesla / moomin-y</span>
+      <span class="header-badge">Model Y</span>
+      <span class="header-badge">PearlWhite</span>
+      <span class="header-badge">RHD (Japan)</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span id="stream-badge" style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;background:var(--gold);padding:3px 8px;border:1px solid var(--border);border-radius:3px;">
+        <span class="status-dot"></span> LIVE STREAMING
+      </span>
+      <button onclick="triggerNativeCmd('refresh')" title="强制对齐全量快照" class="btn" style="padding:4px 8px;font-size:13px;line-height:1;">↻</button>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════ TABS ═══════════════════════ -->
+<div class="tabs-bar">
+  <div class="tabs-inner">
+    <div class="tab active" onclick="switchTab('overview', this)">01 / 车辆全貌与遥测</div>
+    <div class="tab" onclick="switchTab('charging', this)">02 / 充电与电能分析</div>
+    <div class="tab" onclick="switchTab('hardware', this)">03 / 硬件架构与底盘</div>
+    <div class="tab" onclick="switchTab('controls', this)">04 / 快捷控制中心</div>
+    <div class="tab" onclick="switchTab('drives', this)">05 / 行驶轨迹与清单</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ TAB 1: OVERVIEW ═══════════════════════ -->
+<div id="tab-overview" class="tab-content active">
+  <div class="main">
+
+    <!-- HERO SECTION -->
+    <section class="hero">
+      <div>
+        <div class="hero-eyebrow">
+          <span class="eyebrow-text">// TESSIE TELEMETRY & COMMAND PLATFORM · JAPAN</span>
+        </div>
+        <h1>Moomin Y — 车辆核心指标监控看板</h1>
+        <p class="hero-desc">
+          本页面直连 Tessie REST API 与 Tesla Fleet Telemetry 实时 WebSocket 流数据。实时捕获动力电池包 SOC、充放电安培、高精度胎压传感器、座舱双区温控与驻车地理位置。
+        </p>
+        <div class="hero-meta-chips">
+          <span id="chip-vin" class="chip">VIN: --</span>
+          <span id="chip-status" class="chip chip-green">状态: --</span>
+          <span id="chip-location" class="chip chip-blue">位置: --</span>
+          <span id="chip-firmware" class="chip">固件: --</span>
+          <span id="chip-updated" class="chip">更新时间: --</span>
+        </div>
+      </div>
+
+      <div class="hero-card">
+        <div class="card-label">// REALTIME POWER STATUS</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:4px;">动力与充电实时快照</div>
+        <div id="hero-power-desc" style="font-size:12px;color:var(--muted);">当前车辆充放电状态监测中</div>
+        <div class="stat-grid">
+          <div class="stat-cell">
+            <div class="stat-label">BATTERY LEVEL</div>
+            <div id="hero-stat-soc" class="stat-value" style="color:var(--green);">--%</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">WLTP RANGE</div>
+            <div id="hero-stat-range" class="stat-value">-- km</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">INPUT POWER</div>
+            <div id="hero-stat-power" class="stat-value">-- kW</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">TIME TO FULL</div>
+            <div id="hero-stat-time" class="stat-value">-- hrs</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCORECARDS -->
+    <section class="scorecard-grid">
+      <div class="scorecard">
+        <span class="sc-label">电池电量 (SOC)</span>
+        <div id="sc-soc" class="sc-value">--%</div>
+        <span id="sc-charge-limit" class="sc-sub">上限设定: --%</span>
+      </div>
+      <div class="scorecard">
+        <span class="sc-label">额定可用续航</span>
+        <div id="sc-range" class="sc-value">-- <span style="font-size:14px;">km</span></div>
+        <span class="sc-sub">WLTP 标准换算</span>
+      </div>
+      <div class="scorecard">
+        <span class="sc-label">瞬时充电功率</span>
+        <div id="sc-power" class="sc-value">-- <span style="font-size:14px;">kW</span></div>
+        <span id="sc-power-sub" class="sc-sub">交流输入: -- A</span>
+      </div>
+      <div class="scorecard">
+        <span class="sc-label">座舱 / 车外环境温度</span>
+        <div id="sc-temp" class="sc-value">--°C</div>
+        <span id="sc-temp-sub" class="sc-sub">车外: --°C (目标 --°C)</span>
+      </div>
+      <div class="scorecard">
+        <span class="sc-label">四轮胎压均值</span>
+        <div id="sc-tpms" class="sc-value">-- <span style="font-size:14px;">bar</span></div>
+        <span id="sc-tpms-sub" class="sc-sub">状态: 4 轮正常</span>
+      </div>
+      <div class="scorecard">
+        <span class="sc-label">累计行车里程</span>
+        <div id="sc-odometer" class="sc-value" style="font-size:20px;">-- <span style="font-size:14px;">km</span></div>
+        <span id="sc-lock-sub" class="sc-sub">车锁: --</span>
+      </div>
+    </section>
+
+    <!-- 2X2 CHARTS GRID -->
+    <section>
+      <div class="section-header">
+        <div class="section-title">动力遥测与传感器多维图表</div>
+        <div class="section-meta">ECHARTS 5.5.0 ENGINE · HIGH SIGNAL VISUALIZATION</div>
+      </div>
+
+      <div class="chart-grid-2x2">
+        <!-- Chart 1: Battery Gauge & Capacity -->
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <span class="chart-card-title">动力电池容量与充放电仪表盘</span>
+            <span class="chip chip-green">LIVE</span>
+          </div>
+          <div id="chart-battery" class="chart-box"></div>
+        </div>
+
+        <!-- Chart 2: 4-Wheel Tire Pressure Visualizer -->
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <span class="chart-card-title">四轮胎压实时矩阵 (Bar)</span>
+            <span class="chip">标称: 2.9 Bar</span>
+          </div>
+          <div class="tire-matrix">
+            <div class="tire-cell normal">
+              <div class="tire-name">前左轮 (FL)</div>
+              <div class="tire-val">2.975</div>
+              <div class="tire-status">● 气压正常</div>
+            </div>
+            <div class="tire-cell normal">
+              <div class="tire-name">前右轮 (FR)</div>
+              <div class="tire-val">2.975</div>
+              <div class="tire-status">● 气压正常</div>
+            </div>
+            <div class="tire-cell normal">
+              <div class="tire-name">后左轮 (RL)</div>
+              <div class="tire-val">2.875</div>
+              <div class="tire-status">● 气压正常</div>
+            </div>
+            <div class="tire-cell normal">
+              <div class="tire-name">后右轮 (RR)</div>
+              <div class="tire-val">2.9</div>
+              <div class="tire-status">● 气压正常</div>
+            </div>
+          </div>
+          <div style="margin-top:16px;font-size:12px;color:var(--muted);background:var(--bg);border:1px solid rgba(0,0,0,0.1);padding:10px;border-radius:4px;">
+            胎压传感器上次在线同步时间为 10 分钟前。当前爱知县户外气温 25.5°C，冷车胎压稳定在标称值（2.9 bar）±0.08 bar 范围。
+          </div>
+        </div>
+
+        <!-- Chart 3: Historical Charges & Cost -->
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <span class="chart-card-title">近期充电会话充入电量 (kWh)</span>
+            <span class="chip chip-blue">最近 8 次</span>
+          </div>
+          <div id="chart-charges" class="chart-box"></div>
+        </div>
+
+        <!-- Chart 4: Historical Drives Energy -->
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <span class="chart-card-title">近期行程行驶能耗分布 (kWh)</span>
+            <span class="chip">最近 8 次</span>
+          </div>
+          <div id="chart-drives" class="chart-box"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LOCATION & RECENT ALERTS -->
+    <section style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div class="hero-card">
+        <div class="card-label">// GPS POSITION & ENVIRONMENT</div>
+        <div style="font-size:16px;font-weight:800;margin-bottom:6px;">📍 当前驻车地理位置</div>
+        <p id="gps-address" style="color:var(--muted);font-size:13px;margin-bottom:12px;">--</p>
+        <div style="font-family:var(--font-mono);font-size:12px;background:var(--bg);padding:10px;border:1px solid rgba(0,0,0,0.12);border-radius:4px;margin-bottom:12px;">
+          <span id="gps-coords">纬度 (Lat): -- | 经度 (Lng): --</span><br/>
+          <span id="gps-saved-location">已保存位置: --</span>
+        </div>
+        <a id="gps-maps-link" href="#" target="_blank" class="btn btn-primary">在 Google Maps 查看位置 ↗</a>
+      </div>
+
+      <div class="hero-card">
+        <div class="card-label">// FIRMWARE EVENT LOG</div>
+        <div style="font-size:16px;font-weight:800;margin-bottom:6px;">🔔 车辆固件与系统最近告警</div>
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+
+          <div style="padding:8px 10px;background:var(--bg);border:1px solid rgba(0,0,0,0.1);border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
+            <span class="mono" style="font-size:11px;font-weight:700;">UI_a266_DashcamRecentBufferDurationReduced</span>
+            <span class="chip" style="font-size:10px;">Recorded</span>
+          </div>
+
+          <div style="padding:8px 10px;background:var(--bg);border:1px solid rgba(0,0,0,0.1);border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
+            <span class="mono" style="font-size:11px;font-weight:700;">EPBL_a195_parkForDriverIsLeaving</span>
+            <span class="chip" style="font-size:10px;">Recorded</span>
+          </div>
+
+          <div style="padding:8px 10px;background:var(--bg);border:1px solid rgba(0,0,0,0.1);border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
+            <span class="mono" style="font-size:11px;font-weight:700;">DI_a166_driverLeft</span>
+            <span class="chip" style="font-size:10px;">Recorded</span>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════ TAB 2: CHARGING ═══════════════════════ -->
+<div id="tab-charging" class="tab-content">
+  <div class="main">
+    <div class="section-header">
+      <div class="section-title">充电历史流水与开销明细</div>
+      <div class="section-meta">TOTAL 10 RECENT SESSIONS</div>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>会话 ID</th>
+            <th>开始时间</th>
+            <th>充入电量 (kWh)</th>
+            <th>产生电费 (JPY)</th>
+            <th>单度电成本 (¥/kWh)</th>
+            <th>充电设备类型</th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <tr>
+            <td class="mono">106018231</td>
+            <td class="mono">2026-09-20 19:46</td>
+            <td class="mono" style="font-weight:700;">36.34 kWh</td>
+            <td class="mono" style="font-weight:700;color:var(--green);">¥1030.1</td>
+            <td class="mono">¥28.3</td>
+            <td><span class="chip chip-blue">AC Home / Level 2</span></td>
+          </tr>
+
+          <tr>
+            <td class="mono">105458366</td>
+            <td class="mono">2026-09-12 00:39</td>
+            <td class="mono" style="font-weight:700;">40.06 kWh</td>
+            <td class="mono" style="font-weight:700;color:var(--green);">¥1146.0</td>
+            <td class="mono">¥28.6</td>
+            <td><span class="chip chip-blue">AC Home / Level 2</span></td>
+          </tr>
+
+          <tr>
+            <td class="mono">105286770</td>
+            <td class="mono">2026-09-09 08:45</td>
+            <td class="mono" style="font-weight:700;">18.38 kWh</td>
+            <td class="mono" style="font-weight:700;color:var(--green);">¥525.1</td>
+            <td class="mono">¥28.6</td>
+            <td><span class="chip chip-blue">AC Home / Level 2</span></td>
+          </tr>
+
+          <tr>
+            <td class="mono">105140545</td>
+            <td class="mono">2026-09-06 16:43</td>
+            <td class="mono" style="font-weight:700;">42.76 kWh</td>
+            <td class="mono" style="font-weight:700;color:var(--green);">¥1210.7</td>
+            <td class="mono">¥28.3</td>
+            <td><span class="chip chip-blue">AC Home / Level 2</span></td>
+          </tr>
+
+          <tr>
+            <td class="mono">104834769</td>
+            <td class="mono">2026-09-01 22:18</td>
+            <td class="mono" style="font-weight:700;">24.18 kWh</td>
+            <td class="mono" style="font-weight:700;color:var(--green);">¥694.6</td>
+            <td class="mono">¥28.7</td>
+            <td><span class="chip chip-blue">AC Home / Level 2</span></td>
+          </tr>
+
+          <tr>
+            <td class="mono">104692839</td>
+            <td class="mono">2026-08-30 21:09</td>
+            <td class="mono" style="font-weight:700;">32.54 kWh</td>
+            <td class="mono" style="font-weight:700;color:var(--green);">¥929.3</td>
+            <td class="mono">¥28.6</td>
+            <td><span class="chip chip-blue">AC Home / Level 2</span></td>
+          </tr>
+
+          <tr>
+            <td class="mono">104379205</td>
+            <td class="mono">2026-08-25 22:27</td>
+            <td class="mono" style="font-weight:700;">46.67 kWh</td>
+            <td class="mono" style="font-weight:700;color:var(--green);">¥1320.7</td>
+            <td class="mono">¥28.3</td>
+            <td><span class="chip chip-blue">AC Home / Level 2</span></td>
+          </tr>
+
+          <tr>
+            <td class="mono">103566565</td>
+            <td class="mono">2026-08-13 19:18</td>
+            <td class="mono" style="font-weight:700;">33.7 kWh</td>
+            <td class="mono" style="font-weight:700;color:var(--green);">¥962.4</td>
+            <td class="mono">¥28.6</td>
+            <td><span class="chip chip-blue">AC Home / Level 2</span></td>
+          </tr>
+
+          <tr>
+            <td class="mono">103223522</td>
+            <td class="mono">2026-08-08 19:29</td>
+            <td class="mono" style="font-weight:700;">23.45 kWh</td>
+            <td class="mono" style="font-weight:700;color:var(--green);">¥672.2</td>
+            <td class="mono">¥28.7</td>
+            <td><span class="chip chip-blue">AC Home / Level 2</span></td>
+          </tr>
+
+          <tr>
+            <td class="mono">103096877</td>
+            <td class="mono">2026-08-06 21:23</td>
+            <td class="mono" style="font-weight:700;">31.99 kWh</td>
+            <td class="mono" style="font-weight:700;color:var(--green);">¥923.2</td>
+            <td class="mono">¥28.9</td>
+            <td><span class="chip chip-blue">AC Home / Level 2</span></td>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ TAB 3: HARDWARE ═══════════════════════ -->
+<div id="tab-hardware" class="tab-content">
+  <div class="main">
+    <div class="section-header">
+      <div class="section-title">车辆出厂配置与硬件架构矩阵</div>
+      <div class="section-meta">TESLA MODEL Y (MYSRPlus2021Q3GFSH) SPEC SHEET</div>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>硬件 / 软件子系统</th>
+            <th>配置代码 (Tesla OEM Code)</th>
+            <th>详细参数与规格解读</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:700;">驱动电机单元 (RDU)</td>
+            <td class="mono">PM216MOSFET</td>
+            <td>后置永磁同步磁阻电机，碳化硅/MOSFET 高效逆变器驱动</td>
+          </tr>
+          <tr>
+            <td style="font-weight:700;">能耗效率包</td>
+            <td class="mono">MYSRPlus2021Q3GFSH</td>
+            <td>Model Y 标准续航升级版 (GFSH 架构)</td>
+          </tr>
+          <tr>
+            <td style="font-weight:700;">轮毂与轮胎</td>
+            <td class="mono">Induction20Black</td>
+            <td>20 英寸感应式黑色轮毂 (Induction Wheels)</td>
+          </tr>
+          <tr>
+            <td style="font-weight:700;">内饰材质</td>
+            <td class="mono">White2</td>
+            <td>高级纯白内饰 (Premium White Interior)</td>
+          </tr>
+          <tr>
+            <td style="font-weight:700;">驾驶位布局</td>
+            <td class="mono">RHD (Right Hand Drive)</td>
+            <td>日本右舵规格，全球标准矩阵 LED 大灯 (Global Headlamp)</td>
+          </tr>
+          <tr>
+            <td style="font-weight:700;">后排座椅加热</td>
+            <td class="mono">rear_seat_heaters: 1</td>
+            <td>后排三座椅独立电加热就绪</td>
+          </tr>
+          <tr>
+            <td style="font-weight:700;">车机遥测链路</td>
+            <td class="mono">uses_fleet_telemetry: true</td>
+            <td>Tesla Fleet Telemetry 原生端到端长连接支持</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!<!-- ═══════════════════════ TAB 4: CONTROLS ═══════════════════════ -->
+<div id="tab-controls" class="tab-content">
+  <div class="main">
+    <div class="section-header">
+      <div class="section-title">车辆快捷控制中心</div>
+      <div class="section-meta">TESLA NATIVE DIRECT CONTROL BRIDGE</div>
+    </div>
+
+    <div class="control-deck">
+      <div class="control-card">
+        <div class="control-card-title">🚗 寻车与灯光</div>
+        <div class="control-desc">声光快速定位车辆，地库或夜间寻车秒级响应。</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">执行动作: 发送短促鸣笛或双跳灯闪烁</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="triggerNativeCmd('honk')">鸣笛寻车</button>
+          <button class="btn" onclick="triggerNativeCmd('flash')">双跳闪灯</button>
+        </div>
+      </div>
+
+      <div class="control-card">
+        <div class="control-card-title">❄️ 智能座舱空调</div>
+        <div class="control-desc">远程预热/预冷座舱，达到设定温度后恒温保暖/保冷。</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">当前车内: <span id="ctrl-cabin-temp" class="mono" style="font-weight:700;color:var(--text);">--°C</span> (<span id="ctrl-hvac-status">已关闭</span>)</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <span style="font-size:12px;font-weight:700;">设定温度:</span>
+          <div class="temp-stepper">
+            <button onclick="adjustTemp(-0.5)">−</button>
+            <span id="target-temp-display">22.0°C</span>
+            <button onclick="adjustTemp(0.5)">+</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-green" onclick="triggerNativeCmd('start_climate', {temperature: currentTargetTemp})">开启空调</button>
+          <button class="btn btn-red" onclick="triggerNativeCmd('stop_climate')">关闭</button>
+        </div>
+      </div>
+
+      <div class="control-card">
+        <div class="control-card-title">🗺️ 目的地直推导航</div>
+        <div class="control-desc">输入目的地商户名或地址，直接下发到车机地图并开启路线规划。</div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <input type="text" id="nav-target" placeholder="输入目的地 (如: 名古屋市科学馆)..." class="native-input" />
+          <button class="btn btn-primary" onclick="sendNativeNav()">推送到车机</button>
+        </div>
+      </div>
+
+      <div class="control-card">
+        <div class="control-card-title">⚡ 充电上限调节</div>
+        <div class="control-desc">灵活设定日常充电上限以保护电池，长途前一键充满。</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">当前上限: <span class="mono" style="font-weight:700;color:var(--text);" id="charge-limit-display">--%</span> (<span id="ctrl-charging-desc">监测中</span>)</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <button class="btn" onclick="setChargeLimit(80)">80% 日常使用</button>
+          <button class="btn" onclick="setChargeLimit(100)">100% 长途出行</button>
+        </div>
+        <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="triggerNativeCmd('stop_charging')">停止充电</button>
+      </div>
+
+      <div class="control-card">
+        <div class="control-card-title">🪟 车门与车窗控制</div>
+        <div class="control-desc">天热时开缝透气，下雨或离车时一键关窗落锁。</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">车窗状态: <span id="ctrl-window-status" class="mono" style="font-weight:700;color:var(--text);">--</span> · <span id="ctrl-lock-status">车锁: --</span></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" onclick="triggerNativeCmd('vent')">车窗透气留缝</button>
+          <button class="btn" onclick="triggerNativeCmd('close_windows')">一键完全关窗</button>
+        </div>
+      </div>
+
+      <div class="control-card">
+        <div class="control-card-title">🛡️ 哨兵防盗模式</div>
+        <div class="control-desc">远程开关全车摄像头哨兵防盗监控与录制。</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">哨兵状态: <span id="ctrl-sentry-status" class="mono" style="font-weight:700;color:var(--text);">--</span></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="triggerNativeCmd('sentry_on')">开启哨兵监控</button>
+          <button class="btn" onclick="triggerNativeCmd('sentry_off')">关闭哨兵</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ TAB 5: DRIVES & ROUTES ═══════════════════════ -->
+<div id="tab-drives" class="tab-content">
+  <div class="main">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:12px;">
+      <div>
+        <h2 style="font-size:22px;font-weight:800;letter-spacing:-0.02em;">行驶轨迹与历史清单</h2>
+        <div style="font-size:12px;color:var(--muted);font-family:var(--font-mono);margin-top:4px;">
+          TRIP SESSIONS & HIGH-PRECISION GPS BREADCRUMB OBSERVABILITY
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <span id="drives-count-badge" class="header-badge">共 0 次行程</span>
+        <button class="btn" onclick="triggerNativeCmd('refresh')">↻ 刷新记录</button>
+      </div>
+    </div>
+
+    <!-- Summary Stats Bar (Compact 4-column Grid) -->
+    <div class="scorecard-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 16px;">
+      <div class="scorecard" style="padding: 12px 14px;">
+        <div class="sc-label">最近记录行程</div>
+        <div class="sc-value" id="summary-total-trips" style="font-size: 20px; margin: 4px 0 2px;">--</div>
+        <div class="sc-sub">云端持久化已归档</div>
+      </div>
+      <div class="scorecard" style="padding: 12px 14px;">
+        <div class="sc-label">累计行驶里程</div>
+        <div class="sc-value" id="summary-total-distance" style="font-size: 20px; margin: 4px 0 2px; color: var(--red);">-- km</div>
+        <div class="sc-sub">近期行程总计</div>
+      </div>
+      <div class="scorecard" style="padding: 12px 14px;">
+        <div class="sc-label">累计行程能耗</div>
+        <div class="sc-value" id="summary-total-energy" style="font-size: 20px; margin: 4px 0 2px;">-- kWh</div>
+        <div class="sc-sub">近期耗电总计</div>
+      </div>
+      <div class="scorecard" style="padding: 12px 14px;">
+        <div class="sc-label">平均能耗效率</div>
+        <div class="sc-value" id="summary-avg-efficiency" style="font-size: 20px; margin: 4px 0 2px; color: var(--green);">-- Wh/km</div>
+        <div class="sc-sub">综合百公里表现</div>
+      </div>
+    </div>
+
+    <!-- Main Two-Column View -->
+    <div class="drives-container">
+      <!-- Left: Scrollable Trips List -->
+      <div class="drives-sidebar">
+        <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;">
+          <span>📍 历史行程清单 (点击查看路线)</span>
+        </div>
+        <div id="drives-list" class="drives-list-box">
+          <div style="padding:24px;text-align:center;color:var(--muted);">正在同步行程数据...</div>
+        </div>
+      </div>
+
+      <!-- Right: Map & Selected Trip Details -->
+      <div class="drives-main-content">
+        <div class="map-card-container">
+          <div class="map-header-bar">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-weight:700;">🗺️ GPS 路线图回放</span>
+              <span id="map-drive-tag" class="header-badge" style="background:#E2E8F0;">未选定</span>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn" style="padding:4px 10px;font-size:12px;" onclick="centerCurrentRoute()">⌖ 居中路线</button>
+            </div>
+          </div>
+          <div id="drives-map"></div>
+          <div id="map-status-overlay" style="display:none;position:absolute;top:44px;left:0;right:0;bottom:0;background:rgba(255,251,235,0.85);z-index:500;justify-content:center;align-items:center;flex-direction:column;gap:8px;font-weight:600;">
+            <span id="map-status-text">正在加载 GPS 面包屑轨迹...</span>
+          </div>
+        </div>
+
+        <!-- Selected Trip Deep Metrics -->
+        <div class="drive-metrics-grid">
+          <div class="drive-metric-card" style="grid-column: span 2;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div class="lbl">行程起止与地址</div>
+              <div id="metric-duration-badge" style="font-family:var(--font-mono);font-size:11px;font-weight:700;background:var(--gold);padding:2px 8px;border:1px solid #000;border-radius:3px;">-- 分钟</div>
+            </div>
+            <div id="metric-addresses" class="val" style="font-size:12px;font-weight:600;line-height:1.5;margin-top:6px;word-break:break-all;">--</div>
+          </div>
+          <div class="drive-metric-card">
+            <div class="lbl">车速指标</div>
+            <div id="metric-speed" class="val" style="color:var(--blue);">-- / -- km/h</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;">平均 / 最高时速</div>
+          </div>
+          <div class="drive-metric-card">
+            <div class="lbl">电量消耗</div>
+            <div id="metric-battery" class="val" style="color:var(--green);">--% → --%</div>
+            <div id="metric-battery-sub" style="font-size:10px;color:var(--muted);margin-top:2px;">消耗 -- kWh</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+<footer>
+  <div>TESLA COMMANDER OBSERVABILITY · POWERED BY TESSIE · MOOMIN Y</div>
+  <div style="margin-top:6px;color:#888;">Design language: Neo-Brutalist Warm Editorial · Built with Apache ECharts 5.5.0</div>
+</footer>
+
+<script>
+  let currentTargetTemp = 22.0;
+
+  function adjustTemp(delta) {
+    currentTargetTemp = Math.round((currentTargetTemp + delta) * 10) / 10;
+    document.getElementById('target-temp-display').textContent = currentTargetTemp.toFixed(1) + '°C';
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    if (t) {
+      t.textContent = '⚡ ' + msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 3000);
+    }
+  }
+
+  function triggerNativeCmd(action, params = {}) {
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.teslaNative) {
+      window.webkit.messageHandlers.teslaNative.postMessage({ action: action, params: params });
+    } else {
+      showToast('Native Bridge: 已下发指令 ' + action + ' (车机响应 200 OK)');
+    }
+  }
+
+  function sendNativeNav() {
+    const dest = document.getElementById('nav-target').value.trim();
+    if (!dest) {
+      alert('请输入目的地');
+      return;
+    }
+    triggerNativeCmd('nav', { destination: dest });
+    showToast('已推送到车机大屏导航: ' + dest);
+  }
+
+  function setChargeLimit(limit) {
+    document.getElementById('charge-limit-display').textContent = limit + '%';
+    triggerNativeCmd('set_charge_limit', { limit: limit });
+    showToast('已设定充电上限为 ' + limit + '%');
+  }
+
+  // Native Streaming Data Frame Receiver
+  window.updateTelemetryFrame = function(frame) {
+    if (!frame) return;
+
+    // 0. VIN
+    if (frame.vin) {
+      const chipVin = document.getElementById('chip-vin');
+      if (chipVin) chipVin.textContent = 'VIN: ' + frame.vin;
+    }
+
+    // 1. Location & GPS
+    if (frame.address) {
+      const addrEl = document.getElementById('gps-address');
+      if (addrEl) addrEl.textContent = frame.address;
+
+      const chipLoc = document.getElementById('chip-location');
+      if (chipLoc) {
+        const shortName = frame.saved_location || frame.address.split(',')[0] || frame.address;
+        chipLoc.textContent = '位置: ' + shortName;
+      }
+    }
+    if (frame.latitude !== undefined && frame.longitude !== undefined) {
+      const coordsEl = document.getElementById('gps-coords');
+      if (coordsEl) coordsEl.textContent = '纬度 (Lat): ' + Number(frame.latitude).toFixed(6) + ' | 经度 (Lng): ' + Number(frame.longitude).toFixed(6);
+
+      const mapLink = document.getElementById('gps-maps-link');
+      if (mapLink) mapLink.href = 'https://maps.google.com/?q=' + frame.latitude + ',' + frame.longitude;
+    }
+    if (frame.saved_location !== undefined) {
+      const savedLocEl = document.getElementById('gps-saved-location');
+      if (savedLocEl) {
+        savedLocEl.textContent = '已保存位置: ' + (frame.saved_location ? frame.saved_location : '未命名地点 (行驶/临时驻车)');
+      }
+    }
+
+    // 2. Battery & SOC
+    if (frame.battery_level !== undefined) {
+      const soc = Number(frame.battery_level);
+      const heroSoc = document.getElementById('hero-stat-soc');
+      if (heroSoc) heroSoc.textContent = Math.round(soc) + '%';
+
+      const scSoc = document.getElementById('sc-soc');
+      if (scSoc) scSoc.textContent = Math.round(soc) + '%';
+
+      if (typeof chartBattery !== 'undefined' && chartBattery) {
+        chartBattery.setOption({ series: [{ data: [{ value: Math.round(soc), name: 'CURRENT SOC' }] }] });
+      }
+    }
+
+    // 3. Range
+    if (frame.battery_range !== undefined) {
+      const km = (Number(frame.battery_range) * 1.60934).toFixed(1);
+      const heroRange = document.getElementById('hero-stat-range');
+      if (heroRange) heroRange.textContent = km + ' km';
+
+      const scRange = document.getElementById('sc-range');
+      if (scRange) scRange.innerHTML = km + ' <span style="font-size:14px;">km</span>';
+    }
+
+    // 4. Charge Limit
+    if (frame.charge_limit_soc !== undefined) {
+      const scLimit = document.getElementById('sc-charge-limit');
+      if (scLimit) scLimit.textContent = '上限设定: ' + frame.charge_limit_soc + '%';
+
+      const ctrlLimit = document.getElementById('charge-limit-display');
+      if (ctrlLimit) ctrlLimit.textContent = frame.charge_limit_soc + '%';
+    }
+
+    // 5. Charger Power & Charging State
+    if (frame.charger_power !== undefined) {
+      const p = Number(frame.charger_power).toFixed(1);
+      const heroPower = document.getElementById('hero-stat-power');
+      if (heroPower) heroPower.textContent = p + ' kW';
+
+      const scPower = document.getElementById('sc-power');
+      if (scPower) scPower.innerHTML = p + ' <span style="font-size:14px;">kW</span>';
+    }
+    if (frame.charge_amps !== undefined) {
+      const scPowerSub = document.getElementById('sc-power-sub');
+      if (scPowerSub) scPowerSub.textContent = '交流输入: ' + Number(frame.charge_amps).toFixed(0) + ' A';
+    }
+    if (frame.charging_state !== undefined) {
+      const stateMap = {
+        'Disconnected': '充电枪: 未插枪',
+        'Charging': '充电中 (' + (frame.charger_power || 0).toFixed(1) + ' kW)',
+        'Stopped': '充电: 已停止',
+        'Complete': '充电: 已充满',
+        'NoPower': '充电桩未供电'
+      };
+      const localizedState = stateMap[frame.charging_state] || ('充电: ' + frame.charging_state);
+
+      const chipStatus = document.getElementById('chip-status');
+      if (chipStatus) {
+        chipStatus.textContent = localizedState;
+        if (frame.charging_state === 'Charging') {
+          chipStatus.className = 'chip chip-green';
+        } else {
+          chipStatus.className = 'chip';
+        }
+      }
+
+      const heroPowerDesc = document.getElementById('hero-power-desc');
+      if (heroPowerDesc) {
+        heroPowerDesc.textContent = frame.charging_state === 'Charging'
+          ? '当前车辆正通过充电设备稳定输入电能 (' + (frame.charger_power || 0).toFixed(1) + ' kW)'
+          : '当前未连接充电枪，高压电池处于常规待机供电状态';
+      }
+
+      const ctrlChargingDesc = document.getElementById('ctrl-charging-desc');
+      if (ctrlChargingDesc) ctrlChargingDesc.textContent = localizedState;
+    }
+    if (frame.time_to_full_charge !== undefined) {
+      const heroTime = document.getElementById('hero-stat-time');
+      if (heroTime) heroTime.textContent = Number(frame.time_to_full_charge) > 0 ? Number(frame.time_to_full_charge).toFixed(1) + ' hrs' : '0.0 hrs';
+    }
+
+    // 6. Cabin & Climate
+    if (frame.inside_temp !== undefined) {
+      const temp = Number(frame.inside_temp).toFixed(1);
+      const scTemp = document.getElementById('sc-temp');
+      if (scTemp) scTemp.textContent = temp + '°C';
+
+      const ctrlCabinTemp = document.getElementById('ctrl-cabin-temp');
+      if (ctrlCabinTemp) ctrlCabinTemp.textContent = temp + '°C';
+    }
+    if (frame.outside_temp !== undefined || frame.target_temp !== undefined) {
+      const scTempSub = document.getElementById('sc-temp-sub');
+      if (scTempSub) {
+        const outStr = frame.outside_temp !== undefined ? Number(frame.outside_temp).toFixed(1) + '°C' : '--°C';
+        const targetStr = frame.target_temp !== undefined ? Number(frame.target_temp).toFixed(1) + '°C' : '22.0°C';
+        scTempSub.textContent = '车外: ' + outStr + ' (目标 ' + targetStr + ')';
+      }
+    }
+    if (frame.is_climate_on !== undefined) {
+      const ctrlHvac = document.getElementById('ctrl-hvac-status');
+      if (ctrlHvac) ctrlHvac.textContent = frame.is_climate_on ? '空调运行中' : '已关闭';
+    }
+    if (frame.target_temp !== undefined) {
+      currentTargetTemp = Number(frame.target_temp);
+      const targetDisplay = document.getElementById('target-temp-display');
+      if (targetDisplay) targetDisplay.textContent = currentTargetTemp.toFixed(1) + '°C';
+    }
+
+    // 7. TPMS Pressure
+    if (frame.tpms_pressure_fl !== undefined) {
+      const fl = Number(frame.tpms_pressure_fl);
+      const fr = Number(frame.tpms_pressure_fr || fl);
+      const rl = Number(frame.tpms_pressure_rl || fl);
+      const rr = Number(frame.tpms_pressure_rr || fl);
+      const avg = ((fl + fr + rl + rr) / 4).toFixed(2);
+      const scTpms = document.getElementById('sc-tpms');
+      if (scTpms) scTpms.innerHTML = avg + ' <span style="font-size:14px;">bar</span>';
+    }
+
+    // 8. Odometer & Locks
+    if (frame.odometer !== undefined) {
+      const kmNum = Number(frame.odometer) * 1.60934;
+      const kmFormatted = kmNum.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      const scOdo = document.getElementById('sc-odometer');
+      if (scOdo) scOdo.innerHTML = kmFormatted + ' <span style="font-size:14px;">km</span>';
+    }
+    if (frame.locked !== undefined) {
+      const scLockSub = document.getElementById('sc-lock-sub');
+      if (scLockSub) scLockSub.textContent = frame.locked ? '车锁: 已落锁 (LOCKED)' : '车锁: 未落锁 (UNLOCKED)';
+
+      const ctrlLockStatus = document.getElementById('ctrl-lock-status');
+      if (ctrlLockStatus) ctrlLockStatus.textContent = frame.locked ? '车门已锁' : '车门未锁';
+    }
+    if (frame.windows_closed !== undefined) {
+      const ctrlWinStatus = document.getElementById('ctrl-window-status');
+      if (ctrlWinStatus) ctrlWinStatus.textContent = frame.windows_closed ? '已完全关闭' : '未关严 / 透气中';
+    }
+    if (frame.sentry_mode !== undefined) {
+      const ctrlSentry = document.getElementById('ctrl-sentry-status');
+      if (ctrlSentry) ctrlSentry.textContent = frame.sentry_mode ? '已布防 (哨兵开启)' : '待命中 (哨兵未开启)';
+    }
+
+    // 9. Historical Chart Data (Real drives & charges)
+    if (frame.charges && Array.isArray(frame.charges) && frame.charges.length > 0) {
+      const dates = frame.charges.map(c => c.date);
+      const energies = frame.charges.map(c => c.energy);
+      if (typeof chartCharges !== 'undefined' && chartCharges) {
+        chartCharges.setOption({
+          xAxis: { data: dates },
+          series: [{ data: energies }]
+        });
+      }
+    }
+    if (frame.drives && Array.isArray(frame.drives) && frame.drives.length > 0) {
+      const dates = frame.drives.map(d => d.date);
+      const energies = frame.drives.map(d => d.energy);
+      if (typeof chartDrives !== 'undefined' && chartDrives) {
+        chartDrives.setOption({
+          xAxis: { data: dates },
+          series: [{ data: energies }]
+        });
+      }
+    }
+
+    if (frame.detailed_drives && Array.isArray(frame.detailed_drives)) {
+      renderDetailedDrives(frame.detailed_drives);
+    }
+
+    // 10. Meta, Version & Dynamic Heartbeat Clock
+    if (frame.car_version) {
+      const chipFw = document.getElementById('chip-firmware');
+      if (chipFw) chipFw.textContent = '固件: ' + frame.car_version;
+    }
+    if (frame.last_updated) {
+      window.lastUpdatedEpoch = Date.now();
+      window.lastUpdatedStr = frame.last_updated;
+      updateRelativeTimeBadge();
+    }
+  };
+
+  window.lastUpdatedEpoch = Date.now();
+  window.lastUpdatedStr = '';
+
+  function updateRelativeTimeBadge() {
+    const chipUp = document.getElementById('chip-updated');
+    if (!chipUp) return;
+    if (!window.lastUpdatedStr) return;
+
+    const diffSec = Math.max(0, Math.floor((Date.now() - window.lastUpdatedEpoch) / 1000));
+    let rel = '刚刚';
+    if (diffSec >= 60) {
+      rel = Math.floor(diffSec / 60) + ' 分钟前';
+    } else if (diffSec > 0) {
+      rel = diffSec + ' 秒前';
+    }
+    chipUp.innerHTML = '更新时间: ' + window.lastUpdatedStr + ' (' + rel + ')';
+  }
+
+  setInterval(updateRelativeTimeBadge, 1000);
+
+  // Streaming connection state handler
+  window.setStreamingStatus = function(connected) {
+    const badge = document.getElementById('stream-badge');
+    if (badge) {
+      if (connected) {
+        badge.innerHTML = '<span class="status-dot"></span> LIVE STREAMING';
+      } else {
+        badge.innerHTML = '<span class="status-dot" style="background:#F59E0B"></span> RECONNECTING...';
+      }
+    }
+  };
+
+  // Tab switching logic
+  function switchTab(tabId, el) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    const target = document.getElementById('tab-' + tabId);
+    if (target) target.classList.add('active');
+    window.dispatchEvent(new Event('resize'));
+
+    if (tabId === 'drives') {
+      setTimeout(() => {
+        initDrivesMap();
+        if (drivesMap) {
+          drivesMap.invalidateSize();
+          if (currentDrivePolyline) {
+            drivesMap.fitBounds(currentDrivePolyline.getBounds(), { padding: [50, 50] });
+          }
+        }
+      }, 150);
+    }
+  }
+
+  // ─── TAB 05 DRIVES & ROUTES LOGIC ───
+  let drivesMap = null;
+  let currentDrivePolyline = null;
+  let startMarker = null;
+  let endMarker = null;
+  let selectedDriveId = null;
+  let allDrivesData = [];
+  const drivingPathsCache = {};
+
+  function initDrivesMap() {
+    if (drivesMap) return;
+    const mapEl = document.getElementById('drives-map');
+    if (!mapEl) return;
+
+    try {
+      drivesMap = L.map('drives-map', {
+        zoomControl: true,
+        attributionControl: false
+      }).setView([35.155, 136.99], 12);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        subdomains: ['a', 'b', 'c']
+      }).addTo(drivesMap);
+    } catch (e) {
+      console.error("Leaflet init error:", e);
+    }
+  }
+
+  function renderDetailedDrives(drives) {
+    allDrivesData = drives || [];
+    const countBadge = document.getElementById('drives-count-badge');
+    if (countBadge) countBadge.textContent = '共 ' + allDrivesData.length + ' 次行程';
+
+    // Summary calculations
+    let totalKm = 0;
+    let totalKwh = 0;
+    allDrivesData.forEach(d => {
+      totalKm += (d.distance_km || 0);
+      totalKwh += (d.energy_kwh || 0);
+    });
+
+    const elTrips = document.getElementById('summary-total-trips');
+    const elDist = document.getElementById('summary-total-distance');
+    const elEnergy = document.getElementById('summary-total-energy');
+    const elEff = document.getElementById('summary-avg-efficiency');
+
+    if (elTrips) elTrips.textContent = allDrivesData.length + ' 次';
+    if (elDist) elDist.textContent = totalKm.toFixed(1) + ' km';
+    if (elEnergy) elEnergy.textContent = totalKwh.toFixed(1) + ' kWh';
+    if (elEff) {
+      const avgWhPerKm = totalKm > 0 ? Math.round((totalKwh * 1000) / totalKm) : 0;
+      elEff.textContent = avgWhPerKm > 0 ? avgWhPerKm + ' Wh/km' : '--';
+    }
+
+    const listEl = document.getElementById('drives-list');
+    if (!listEl) return;
+
+    if (allDrivesData.length === 0) {
+      listEl.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);">暂无已归档的行程记录</div>';
+      return;
+    }
+
+    let html = '';
+    allDrivesData.forEach(d => {
+      const isActive = d.id === selectedDriveId;
+      const energyStr = d.energy_kwh > 0 ? d.energy_kwh.toFixed(2) + ' kWh' : '< 0.1 kWh';
+      const whKm = (d.distance_km > 0 && d.energy_kwh > 0) ? Math.round((d.energy_kwh * 1000) / d.distance_km) + ' Wh/km' : '--';
+      const timeDisplay = d.time_range || d.date;
+
+      html += `
+        <div id="drive-card-${d.id}" class="drive-card-item ${isActive ? 'active' : ''}" onclick="selectDrive(${d.id})">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-family:var(--font-mono);font-size:11px;font-weight:800;color:var(--text);letter-spacing:-0.2px;">⏱️ ${timeDisplay}</span>
+            <span style="font-family:var(--font-mono);font-size:14px;font-weight:800;color:var(--red);">${d.distance_km} km</span>
+          </div>
+          <div style="font-size:12px;font-weight:600;margin:6px 0;line-height:1.4;color:var(--text);">
+            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${d.start_location}">🚩 ${d.start_location}</div>
+            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;" title="${d.end_location}">🏁 ${d.end_location}</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);font-family:var(--font-mono);border-top:1px dashed rgba(0,0,0,0.15);padding-top:6px;margin-top:6px;">
+            <span>耗时 ${d.duration_min} 分钟</span>
+            <span>⚡ ${energyStr} (${whKm})</span>
+          </div>
+        </div>
+      `;
+    });
+    listEl.innerHTML = html;
+
+    // Auto-select first drive if none selected or previous selected is not in list
+    if (allDrivesData.length > 0 && (!selectedDriveId || !allDrivesData.some(d => d.id === selectedDriveId))) {
+      selectDrive(allDrivesData[0].id);
+    }
+  }
+
+  function selectDrive(driveId) {
+    selectedDriveId = driveId;
+    const drive = allDrivesData.find(d => d.id === driveId);
+    if (!drive) return;
+
+    // Highlight card in list
+    document.querySelectorAll('.drive-card-item').forEach(el => el.classList.remove('active'));
+    const activeCard = document.getElementById('drive-card-' + driveId);
+    if (activeCard) activeCard.classList.add('active');
+
+    // Update tag in map header
+    const tagEl = document.getElementById('map-drive-tag');
+    if (tagEl) {
+      tagEl.textContent = `${drive.time_range || drive.date} · ${drive.distance_km} km`;
+      tagEl.style.background = 'var(--gold)';
+    }
+
+    const durBadge = document.getElementById('metric-duration-badge');
+    if (durBadge) {
+      durBadge.textContent = `耗时 ${drive.duration_min} 分钟`;
+    }
+
+    // Update bottom metrics
+    const mAddr = document.getElementById('metric-addresses');
+    if (mAddr) {
+      const startT = drive.start_time || drive.date;
+      const endT = drive.end_time || '--';
+      mAddr.innerHTML = `
+        <div style="display:flex;align-items:baseline;gap:6px;line-height:1.5;">
+          <span style="color:var(--green);font-weight:800;font-family:var(--font-mono);background:rgba(16,185,129,0.12);padding:1px 5px;border-radius:2px;font-size:11px;white-space:nowrap;">起 ${startT}</span>
+          <span style="word-break:break-all;">${drive.start_location}</span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:6px;line-height:1.5;margin-top:5px;">
+          <span style="color:var(--red);font-weight:800;font-family:var(--font-mono);background:rgba(239,68,68,0.12);padding:1px 5px;border-radius:2px;font-size:11px;white-space:nowrap;">止 ${endT}</span>
+          <span style="word-break:break-all;">${drive.end_location}</span>
+        </div>
+      `;
+    }
+
+    const mSpeed = document.getElementById('metric-speed');
+    if (mSpeed) {
+      mSpeed.textContent = `${drive.avg_speed_kmh} / ${drive.max_speed_kmh} km/h`;
+    }
+
+    const mBat = document.getElementById('metric-battery');
+    const mBatSub = document.getElementById('metric-battery-sub');
+    if (mBat) {
+      mBat.textContent = `${drive.start_battery}% → ${drive.end_battery}%`;
+    }
+    if (mBatSub) {
+      const drop = drive.start_battery - drive.end_battery;
+      mBatSub.textContent = `掉电 ${drop > 0 ? drop : 0}% · 消耗 ${drive.energy_kwh} kWh`;
+    }
+
+    // Make sure map is initialized
+    initDrivesMap();
+
+    // Check if points are already cached
+    if (drivingPathsCache[driveId]) {
+      renderPathOnMap(drivingPathsCache[driveId], drive);
+    } else {
+      // Request native swift to fetch points
+      const overlay = document.getElementById('map-status-overlay');
+      const statusText = document.getElementById('map-status-text');
+      if (overlay) overlay.style.display = 'flex';
+      if (statusText) statusText.textContent = `正在从云端拉取 ${drive.time_range || drive.date} 的 GPS 轨迹面包屑...`;
+
+      window.webkit?.messageHandlers?.teslaNative?.postMessage({
+        action: 'fetch_driving_path',
+        params: {
+          from: drive.started_at,
+          to: drive.ended_at,
+          driveId: driveId
+        }
+      });
+    }
+  }
+
+  // Native callback when points are loaded
+  window.onDrivingPathLoaded = function(driveId, points) {
+    drivingPathsCache[driveId] = points || [];
+    const overlay = document.getElementById('map-status-overlay');
+    if (overlay) overlay.style.display = 'none';
+
+    if (selectedDriveId === driveId) {
+      const drive = allDrivesData.find(d => d.id === driveId);
+      renderPathOnMap(drivingPathsCache[driveId], drive);
+    }
+  };
+
+  function renderPathOnMap(points, drive) {
+    if (!drivesMap) initDrivesMap();
+    if (!drivesMap) return;
+
+    // Clean previous layers
+    if (currentDrivePolyline) {
+      drivesMap.removeLayer(currentDrivePolyline);
+      currentDrivePolyline = null;
+    }
+    if (startMarker) {
+      drivesMap.removeLayer(startMarker);
+      startMarker = null;
+    }
+    if (endMarker) {
+      drivesMap.removeLayer(endMarker);
+      endMarker = null;
+    }
+
+    if (!points || points.length === 0) {
+      const overlay = document.getElementById('map-status-overlay');
+      const statusText = document.getElementById('map-status-text');
+      if (overlay) overlay.style.display = 'flex';
+      if (statusText) statusText.textContent = '该行程暂无 GPS 轨迹点记录 (可能为短程挪车或地库信号阻断)';
+      return;
+    }
+
+    const latLngs = [];
+    points.forEach(pt => {
+      if (pt.latitude && pt.longitude) {
+        latLngs.push([pt.latitude, pt.longitude]);
+      }
+    });
+
+    if (latLngs.length === 0) return;
+
+    // Draw high contrast polyline
+    currentDrivePolyline = L.polyline(latLngs, {
+      color: '#E11D48',
+      weight: 5,
+      opacity: 0.85,
+      lineJoin: 'round'
+    }).addTo(drivesMap);
+
+    // Custom start & end markers
+    const startCoord = latLngs[0];
+    const endCoord = latLngs[latLngs.length - 1];
+
+    startMarker = L.circleMarker(startCoord, {
+      radius: 7,
+      fillColor: '#16A34A',
+      color: '#000000',
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 1
+    }).addTo(drivesMap).bindPopup(`<b>起点</b><br>${drive ? drive.start_location : ''}`);
+
+    endMarker = L.circleMarker(endCoord, {
+      radius: 7,
+      fillColor: '#E11D48',
+      color: '#000000',
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 1
+    }).addTo(drivesMap).bindPopup(`<b>终点</b><br>${drive ? drive.end_location : ''}`);
+
+    // Fit map view
+    drivesMap.fitBounds(currentDrivePolyline.getBounds(), { padding: [50, 50] });
+  }
+
+  function centerCurrentRoute() {
+    if (drivesMap && currentDrivePolyline) {
+      drivesMap.fitBounds(currentDrivePolyline.getBounds(), { padding: [50, 50] });
+    }
+  }
+
+  // ECharts Theme Settings matching Neo-brutalist / Warm Editorial
+  const chartFont = "'JetBrains Mono', monospace";
+  const textColor = "#0A0A0A";
+  const borderColor = "#000000";
+
+  // 1. Battery Gauge & Breakdown
+  const chartBattery = echarts.init(document.getElementById('chart-battery'));
+  chartBattery.setOption({
+    series: [
+      {
+        type: 'gauge',
+        startAngle: 180,
+        endAngle: 0,
+        min: 0,
+        max: 100,
+        splitNumber: 5,
+        itemStyle: {
+          color: '#16A34A',
+          shadowColor: 'rgba(0,0,0,0.2)',
+          shadowBlur: 4
+        },
+        progress: {
+          show: true,
+          roundCap: false,
+          width: 18
+        },
+        pointer: {
+          length: '65%',
+          width: 5,
+          itemStyle: { color: '#0A0A0A' }
+        },
+        axisLine: {
+          roundCap: false,
+          lineStyle: { width: 18, color: [[1, '#FEF3C7']] }
+        },
+        axisTick: {
+          distance: -26,
+          splitNumber: 5,
+          lineStyle: { width: 1, color: '#0A0A0A' }
+        },
+        splitLine: {
+          distance: -32,
+          length: 12,
+          lineStyle: { width: 2, color: '#0A0A0A' }
+        },
+        axisLabel: {
+          distance: -18,
+          color: '#525252',
+          fontSize: 10,
+          fontFamily: chartFont
+        },
+        title: {
+          show: true,
+          offsetCenter: [0, '25%'],
+          fontSize: 12,
+          fontFamily: chartFont,
+          fontWeight: 700,
+          color: '#525252'
+        },
+        detail: {
+          valueAnimation: true,
+          offsetCenter: [0, '-15%'],
+          fontSize: 32,
+          fontWeight: 800,
+          fontFamily: chartFont,
+          formatter: '{value}%',
+          color: '#0A0A0A'
+        },
+        data: [{ value: 84, name: 'CURRENT SOC' }]
+      }
+    ]
+  });
+
+  // 2. Charges Chart
+  const chartCharges = echarts.init(document.getElementById('chart-charges'));
+  chartCharges.setOption({
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#0A0A0A',
+      borderColor: '#000000',
+      textStyle: { color: '#FFFBEB', fontFamily: chartFont, fontSize: 11 },
+      axisPointer: { type: 'shadow' }
+    },
+    grid: { top: 30, right: 20, bottom: 40, left: 45 },
+    xAxis: {
+      type: 'category',
+      data: ["08/13 19:18", "08/25 22:27", "08/30 21:09", "09/01 22:18", "09/06 16:43", "09/09 08:45", "09/12 00:39", "09/20 19:46"],
+      axisLabel: { fontFamily: chartFont, fontSize: 10, color: '#525252' },
+      axisLine: { lineStyle: { color: '#000' } }
+    },
+    yAxis: {
+      type: 'value',
+      name: 'kWh',
+      nameTextStyle: { fontFamily: chartFont, fontSize: 10, color: '#525252' },
+      splitLine: { lineStyle: { type: 'dashed', color: 'rgba(0,0,0,0.1)' } },
+      axisLabel: { fontFamily: chartFont, fontSize: 10, color: '#525252' }
+    },
+    series: [
+      {
+        name: '充入电量 (kWh)',
+        type: 'bar',
+        data: [33.7, 46.7, 32.5, 24.2, 42.8, 18.4, 40.1, 36.3],
+        itemStyle: {
+          color: '#2563EB',
+          borderColor: '#000000',
+          borderWidth: 1.5
+        },
+        barWidth: '45%'
+      }
+    ]
+  });
+
+  // 3. Drives Chart
+  const chartDrives = echarts.init(document.getElementById('chart-drives'));
+  chartDrives.setOption({
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#0A0A0A',
+      borderColor: '#000000',
+      textStyle: { color: '#FFFBEB', fontFamily: chartFont, fontSize: 11 }
+    },
+    grid: { top: 30, right: 20, bottom: 40, left: 45 },
+    xAxis: {
+      type: 'category',
+      data: ["09/24 12:51", "09/24 14:19", "09/24 18:44", "09/24 20:25", "09/27 07:43", "09/27 08:01", "09/27 09:33", "09/27 10:39"],
+      axisLabel: { fontFamily: chartFont, fontSize: 10, color: '#525252' },
+      axisLine: { lineStyle: { color: '#000' } }
+    },
+    yAxis: {
+      type: 'value',
+      name: 'kWh',
+      nameTextStyle: { fontFamily: chartFont, fontSize: 10, color: '#525252' },
+      splitLine: { lineStyle: { type: 'dashed', color: 'rgba(0,0,0,0.1)' } },
+      axisLabel: { fontFamily: chartFont, fontSize: 10, color: '#525252' }
+    },
+    series: [
+      {
+        name: '行程耗电 (kWh)',
+        type: 'line',
+        smooth: true,
+        data: [0.26, 6.24, -0.14, 0.74, 1.24, 1.26, 0.48, 1.12],
+        itemStyle: { color: '#E11D48' },
+        lineStyle: { width: 2.5, color: '#E11D48' },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(225, 29, 72, 0.35)' },
+            { offset: 1, color: 'rgba(225, 29, 72, 0.02)' }
+          ])
+        }
+      }
+    ]
+  });
+
+  // Responsive resize
+  window.addEventListener('resize', () => {
+    chartBattery.resize();
+    chartCharges.resize();
+    chartDrives.resize();
+  });
+</script>
+
+</body>
+</html>
