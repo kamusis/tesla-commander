@@ -13,9 +13,7 @@ let package = Package(
         .executableTarget(
             name: "TeslaCommander",
             path: "Sources",
-            resources: [
-                .process("Resources")
-            ]
+            exclude: ["Resources"]
         )
     ]
 )

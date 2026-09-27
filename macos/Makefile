@@ -19,6 +19,7 @@ run:
 
 app: release
 	@echo "Creating $(BUNDLE_DIR)..."
+	@rm -rf $(BUNDLE_DIR)
 	@mkdir -p $(MACOS_DIR)
 	@mkdir -p $(RESOURCES_DIR)
 	@cp .build/release/$(APP_NAME) $(MACOS_DIR)/$(APP_NAME)
@@ -48,7 +49,8 @@ app: release
     <true/>\
 </dict>\
 </plist>' > $(CONTENTS_DIR)/Info.plist
-	@echo "Application bundle created at $(BUNDLE_DIR)"
+	@codesign --force --deep --sign - $(BUNDLE_DIR)
+	@echo "Application bundle created and signed at $(BUNDLE_DIR)"
 
 clean:
 	swift package clean

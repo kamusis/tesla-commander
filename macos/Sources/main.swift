@@ -15,7 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         print("[TeslaCommander] Initializing with VIN: \(config.vin), Token present: \(!config.token.isEmpty)")
 
         // 0. Set Application Icon
-        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") ?? Bundle.module.url(forResource: "AppIcon", withExtension: "icns") {
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") {
             NSApp.applicationIconImage = NSImage(contentsOf: iconURL)
         }
 
@@ -109,17 +109,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func locateDashboardFile() -> URL? {
         let fm = FileManager.default
 
-        // Check SPM Bundle.module
-        if let moduleURL = Bundle.module.url(forResource: "tesla_dashboard", withExtension: "html") {
-            return moduleURL
-        }
-
-        // Check App Bundle
+        // 1. Check App Bundle (standard for macOS .app)
         if let mainURL = Bundle.main.url(forResource: "tesla_dashboard", withExtension: "html") {
             return mainURL
         }
 
-        // Check filesystem relative paths
+        // 2. Check filesystem relative paths (for local dev / direct execution)
         let cwd = fm.currentDirectoryPath
         let candidates = [
             (cwd as NSString).appendingPathComponent("Sources/Resources/tesla_dashboard.html"),

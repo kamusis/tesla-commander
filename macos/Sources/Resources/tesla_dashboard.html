@@ -1651,22 +1651,33 @@
     let html = '';
     allDrivesData.forEach(d => {
       const isActive = d.id === selectedDriveId;
-      const energyStr = d.energy_kwh > 0 ? d.energy_kwh.toFixed(2) + ' kWh' : '< 0.1 kWh';
-      const whKm = (d.distance_km > 0 && d.energy_kwh > 0) ? Math.round((d.energy_kwh * 1000) / d.distance_km) + ' Wh/km' : '--';
+      const isSynthetic = d.is_synthetic === true;
+      const energyStr = isSynthetic
+        ? '离线推算'
+        : (d.energy_kwh > 0 ? d.energy_kwh.toFixed(2) + ' kWh' : '< 0.1 kWh');
+      const whKm = (!isSynthetic && d.distance_km > 0 && d.energy_kwh > 0)
+        ? Math.round((d.energy_kwh * 1000) / d.distance_km) + ' Wh/km'
+        : (isSynthetic ? '无电耗' : '--');
       const timeDisplay = d.time_range || d.date;
+      const syntheticBadge = isSynthetic
+        ? `<span style="background:rgba(217,119,6,0.18);color:#B45309;border:1px solid rgba(217,119,6,0.35);font-size:10px;padding:1px 5px;border-radius:3px;margin-left:6px;font-weight:800;">推算补偿 ⚠️</span>`
+        : '';
+      const cardBorder = isSynthetic ? 'border-style:dashed;border-color:rgba(217,119,6,0.6);background:rgba(254,243,199,0.25);' : '';
 
       html += `
-        <div id="drive-card-${d.id}" class="drive-card-item ${isActive ? 'active' : ''}" onclick="selectDrive(${d.id})">
+        <div id="drive-card-${d.id}" class="drive-card-item ${isActive ? 'active' : ''}" style="${cardBorder}" onclick="selectDrive(${d.id})">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-family:var(--font-mono);font-size:11px;font-weight:800;color:var(--text);letter-spacing:-0.2px;">⏱️ ${timeDisplay}</span>
-            <span style="font-family:var(--font-mono);font-size:14px;font-weight:800;color:var(--red);">${d.distance_km} km</span>
+            <span style="font-family:var(--font-mono);font-size:11px;font-weight:800;color:var(--text);letter-spacing:-0.2px;display:flex;align-items:center;">
+              ⏱️ ${timeDisplay} ${syntheticBadge}
+            </span>
+            <span style="font-family:var(--font-mono);font-size:14px;font-weight:800;color:${isSynthetic ? '#B45309' : 'var(--red)'};">${d.distance_km} km</span>
           </div>
           <div style="font-size:12px;font-weight:600;margin:6px 0;line-height:1.4;color:var(--text);">
             <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${d.start_location}">🚩 ${d.start_location}</div>
             <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;" title="${d.end_location}">🏁 ${d.end_location}</div>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);font-family:var(--font-mono);border-top:1px dashed rgba(0,0,0,0.15);padding-top:6px;margin-top:6px;">
-            <span>耗时 ${d.duration_min} 分钟</span>
+            <span>耗时 ~${d.duration_min} 分钟</span>
             <span>⚡ ${energyStr} (${whKm})</span>
           </div>
         </div>
@@ -1693,13 +1704,18 @@
     // Update tag in map header
     const tagEl = document.getElementById('map-drive-tag');
     if (tagEl) {
-      tagEl.textContent = `${drive.time_range || drive.date} · ${drive.distance_km} km`;
-      tagEl.style.background = 'var(--gold)';
+      if (drive.is_synthetic) {
+        tagEl.textContent = `[推算补偿] ${drive.time_range || drive.date} · ${drive.distance_km} km`;
+        tagEl.style.background = '#F59E0B';
+      } else {
+        tagEl.textContent = `${drive.time_range || drive.date} · ${drive.distance_km} km`;
+        tagEl.style.background = 'var(--gold)';
+      }
     }
 
     const durBadge = document.getElementById('metric-duration-badge');
     if (durBadge) {
-      durBadge.textContent = `耗时 ${drive.duration_min} 分钟`;
+      durBadge.textContent = drive.is_synthetic ? `耗时 ~${drive.duration_min} 分钟 (推算)` : `耗时 ${drive.duration_min} 分钟`;
     }
 
     // Update bottom metrics
@@ -1731,15 +1747,29 @@
     }
     if (mBatSub) {
       const drop = drive.start_battery - drive.end_battery;
-      mBatSub.textContent = `掉电 ${drop > 0 ? drop : 0}% · 消耗 ${drive.energy_kwh} kWh`;
+      if (drive.is_synthetic) {
+        mBatSub.textContent = `离线掉电 ${drop > 0 ? drop : 0}% · (里程表跳变 ${drive.distance_km} km)`;
+      } else {
+        mBatSub.textContent = `掉电 ${drop > 0 ? drop : 0}% · 消耗 ${drive.energy_kwh} kWh`;
+      }
     }
 
     // Make sure map is initialized
     initDrivesMap();
 
-    // Check if points are already cached
+    // Check if points are already cached or synthetic
     if (drivingPathsCache[driveId]) {
       renderPathOnMap(drivingPathsCache[driveId], drive);
+    } else if (drive.is_synthetic) {
+      const points = [];
+      if (drive.start_latitude && drive.start_longitude) {
+        points.push({ latitude: drive.start_latitude, longitude: drive.start_longitude });
+      }
+      if (drive.end_latitude && drive.end_longitude) {
+        points.push({ latitude: drive.end_latitude, longitude: drive.end_longitude });
+      }
+      drivingPathsCache[driveId] = points;
+      renderPathOnMap(points, drive);
     } else {
       // Request native swift to fetch points
       const overlay = document.getElementById('map-status-overlay');
@@ -1788,9 +1818,22 @@
       endMarker = null;
     }
 
+    const overlay = document.getElementById('map-status-overlay');
+    const statusText = document.getElementById('map-status-text');
+
+    if (drive && drive.is_synthetic) {
+      if (overlay) overlay.style.display = 'flex';
+      if (statusText) statusText.textContent = '⚡ 冷启动离线补偿：根据仪表盘跳变自动推算补齐起止拓扑（无逐秒 GPS 打点）';
+      setTimeout(() => {
+        if (selectedDriveId === drive.id && overlay) {
+          overlay.style.display = 'none';
+        }
+      }, 3500);
+    } else {
+      if (overlay) overlay.style.display = 'none';
+    }
+
     if (!points || points.length === 0) {
-      const overlay = document.getElementById('map-status-overlay');
-      const statusText = document.getElementById('map-status-text');
       if (overlay) overlay.style.display = 'flex';
       if (statusText) statusText.textContent = '该行程暂无 GPS 轨迹点记录 (可能为短程挪车或地库信号阻断)';
       return;
@@ -1805,13 +1848,21 @@
 
     if (latLngs.length === 0) return;
 
-    // Draw high contrast polyline
-    currentDrivePolyline = L.polyline(latLngs, {
+    // Draw high contrast polyline - dashed if synthetic
+    const polylineOptions = (drive && drive.is_synthetic) ? {
+      color: '#D97706',
+      weight: 4,
+      dashArray: '8, 8',
+      opacity: 0.9,
+      lineJoin: 'round'
+    } : {
       color: '#E11D48',
       weight: 5,
       opacity: 0.85,
       lineJoin: 'round'
-    }).addTo(drivesMap);
+    };
+
+    currentDrivePolyline = L.polyline(latLngs, polylineOptions).addTo(drivesMap);
 
     // Custom start & end markers
     const startCoord = latLngs[0];
@@ -1824,7 +1875,7 @@
       weight: 2,
       opacity: 1,
       fillOpacity: 1
-    }).addTo(drivesMap).bindPopup(`<b>起点</b><br>${drive ? drive.start_location : ''}`);
+    }).addTo(drivesMap).bindPopup(`<b>起点${(drive && drive.is_synthetic) ? '（推算）' : ''}</b><br>${drive ? drive.start_location : ''}`);
 
     endMarker = L.circleMarker(endCoord, {
       radius: 7,
@@ -1833,7 +1884,7 @@
       weight: 2,
       opacity: 1,
       fillOpacity: 1
-    }).addTo(drivesMap).bindPopup(`<b>终点</b><br>${drive ? drive.end_location : ''}`);
+    }).addTo(drivesMap).bindPopup(`<b>终点${(drive && drive.is_synthetic) ? '（推算）' : ''}</b><br>${drive ? drive.end_location : ''}`);
 
     // Fit map view
     drivesMap.fitBounds(currentDrivePolyline.getBounds(), { padding: [50, 50] });

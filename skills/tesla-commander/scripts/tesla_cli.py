@@ -322,18 +322,51 @@ def cmd_analytics(args, client: TessieClient):
     sub = args.subcommand.lower()
 
     if sub == "drives":
-        drives = client.get_drives(vin, limit=args.limit)
+        raw_drives = client.get_drives(vin, limit=args.limit)
+        drives = []
+        for i, d in enumerate(raw_drives):
+            drives.append(d)
+            if i + 1 < len(raw_drives):
+                prev = raw_drives[i + 1]
+                curr_start = d.get("starting_odometer") or 0.0
+                prev_end = prev.get("ending_odometer") or 0.0
+                gap = curr_start - prev_end
+                if curr_start > 0 and prev_end > 0 and 0.2 <= gap < 1000.0:
+                    prev_ended_at = prev.get("ended_at") or 0
+                    curr_started_at = d.get("started_at") or 0
+                    dist_km = round(gap * 1.60934, 1)
+                    duration_sec = max(180, int((dist_km / 25.0) * 3600.0))
+                    syn_end = curr_started_at
+                    syn_start = max(prev_ended_at, syn_end - duration_sec)
+                    drives.append({
+                        "id": f"-{abs(d.get('id', 0)) * 10 + 9}",
+                        "is_synthetic": True,
+                        "odometer_distance": gap,
+                        "duration_minutes": round((syn_end - syn_start) / 60.0, 1),
+                        "energy_used": 0.0,
+                        "starting_location": prev.get("ending_saved_location") or prev.get("ending_location") or "N/A",
+                        "ending_location": d.get("starting_saved_location") or d.get("starting_location") or "N/A",
+                        "started_at": syn_start,
+                        "ended_at": syn_end
+                    })
         if args.json:
             print(json.dumps(drives, indent=2))
             return
         rows = []
         for d in drives:
-            dist = round(d.get("distance", 0) * 1.60934, 1)  # km
-            energy = round(d.get("energy_used", 0), 2)
-            duration = round(d.get("duration_minutes", 0), 1)
-            start_addr = (d.get("starting_address") or "N/A").split(",")[0]
-            end_addr = (d.get("ending_address") or "N/A").split(",")[0]
-            rows.append([d.get("id"), f"{dist} km", f"{duration}m", f"{energy} kWh", start_addr, end_addr])
+            dist = round((d.get("odometer_distance") or d.get("distance") or 0) * 1.60934, 1)  # km
+            energy = round(d.get("energy_used") or 0, 2)
+            if "duration_minutes" in d:
+                duration = round(d["duration_minutes"], 1)
+            elif d.get("started_at") and d.get("ended_at"):
+                duration = round((d["ended_at"] - d["started_at"]) / 60.0, 1)
+            else:
+                duration = 0.0
+            start_addr = (d.get("starting_saved_location") or d.get("starting_location") or d.get("starting_address") or "N/A").split(",")[0]
+            end_addr = (d.get("ending_saved_location") or d.get("ending_location") or d.get("ending_address") or "N/A").split(",")[0]
+            did = str(d.get("id"))
+            energy_str = f"{energy} kWh" if not d.get("is_synthetic") else "离线推算"
+            rows.append([did, f"{dist} km", f"{duration}m", energy_str, start_addr, end_addr])
         print_table(rows, ["ID", "Distance", "Duration", "Energy", "From", "To"])
 
     elif sub == "charges":

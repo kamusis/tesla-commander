@@ -38,6 +38,9 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
                   let driveId = params["driveId"] as? Int else {
                 return
             }
+            if driveId < 0 {
+                return
+            }
             Task {
                 do {
                     let points = try await client.fetchDrivingPath(from: from, to: to, details: true)
@@ -221,73 +224,7 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
                 return ["date": dateStr, "energy": energy]
             }
 
-            frame["detailed_drives"] = drives.compactMap { d -> [String: Any]? in
-                let driveId = d["id"] as? Int ?? 0
-                guard driveId > 0 else { return nil }
-                let startedAt = d["started_at"] as? Int ?? (d["starting_time"] as? Int ?? 0)
-                let endedAt = d["ended_at"] as? Int ?? (d["ending_time"] as? Int ?? 0)
-                let dtStart = startedAt > 0 ? Date(timeIntervalSince1970: TimeInterval(startedAt)) : nil
-                let dtEnd = endedAt > 0 ? Date(timeIntervalSince1970: TimeInterval(endedAt)) : nil
-
-                let startFormatter = DateFormatter()
-                startFormatter.dateFormat = "yyyy-MM-dd HH:mm"
-                let endFormatter = DateFormatter()
-                endFormatter.dateFormat = "HH:mm"
-                let fullFormatter = DateFormatter()
-                fullFormatter.dateFormat = "yyyy-MM-dd HH:mm"
-
-                let startTimeStr = dtStart != nil ? startFormatter.string(from: dtStart!) : "--"
-                let endTimeStr = dtEnd != nil ? fullFormatter.string(from: dtEnd!) : "--"
-
-                let timeRange: String
-                if let d1 = dtStart, let d2 = dtEnd {
-                    if Calendar.current.isDate(d1, inSameDayAs: d2) {
-                        timeRange = "\(startFormatter.string(from: d1)) ~ \(endFormatter.string(from: d2))"
-                    } else {
-                        let crossFormatter = DateFormatter()
-                        crossFormatter.dateFormat = "MM-dd HH:mm"
-                        timeRange = "\(startFormatter.string(from: d1)) ~ \(crossFormatter.string(from: d2))"
-                    }
-                } else if dtStart != nil {
-                    timeRange = "\(startTimeStr) ~ 进行中"
-                } else {
-                    timeRange = "--"
-                }
-
-                let durationMin = (endedAt > startedAt && startedAt > 0) ? Int(round(Double(endedAt - startedAt) / 60.0)) : 0
-                let miles = d["odometer_distance"] as? Double ?? 0
-                let km = round(miles * 1.60934 * 10) / 10.0
-                let energy = round((d["energy_used"] as? Double ?? 0) * 100) / 100.0
-                let startLoc = d["starting_saved_location"] as? String ?? d["starting_location"] as? String ?? "未知起点"
-                let endLoc = d["ending_saved_location"] as? String ?? d["ending_location"] as? String ?? "未知终点"
-                let startBat = d["starting_battery"] as? Int ?? 0
-                let endBat = d["ending_battery"] as? Int ?? 0
-                let avgSpeed = round((d["average_speed"] as? Double ?? Double(d["average_speed"] as? Int ?? 0)) * 1.60934)
-                let maxSpeed = round((d["max_speed"] as? Double ?? Double(d["max_speed"] as? Int ?? 0)) * 1.60934)
-                let insideTemp = d["average_inside_temperature"] as? Double ?? 0.0
-                let outsideTemp = d["average_outside_temperature"] as? Double ?? 0.0
-
-                return [
-                    "id": driveId,
-                    "started_at": startedAt,
-                    "ended_at": endedAt,
-                    "date": startTimeStr,
-                    "start_time": startTimeStr,
-                    "end_time": endTimeStr,
-                    "time_range": timeRange,
-                    "duration_min": durationMin,
-                    "distance_km": km,
-                    "energy_kwh": energy,
-                    "start_location": startLoc,
-                    "end_location": endLoc,
-                    "start_battery": startBat,
-                    "end_battery": endBat,
-                    "avg_speed_kmh": avgSpeed,
-                    "max_speed_kmh": maxSpeed,
-                    "inside_temp": insideTemp,
-                    "outside_temp": outsideTemp
-                ]
-            }
+            frame["detailed_drives"] = buildDetailedDrives(from: drives)
 
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -300,6 +237,156 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
         } catch {
             self.showToast(message: "同步快照失败: \(error.localizedDescription)")
         }
+    }
+
+    /// Reconciles raw Tessie drives by detecting odometer jumps and inserting synthetic compensated drives.
+    private func buildDetailedDrives(from rawDrives: [[String: Any]]) -> [[String: Any]] {
+        var results: [[String: Any]] = []
+
+        let startFormatter = DateFormatter()
+        startFormatter.dateFormat = "yyyy-MM-dd HH:mm"
+        let endFormatter = DateFormatter()
+        endFormatter.dateFormat = "HH:mm"
+        let fullFormatter = DateFormatter()
+        fullFormatter.dateFormat = "yyyy-MM-dd HH:mm"
+        let crossFormatter = DateFormatter()
+        crossFormatter.dateFormat = "MM-dd HH:mm"
+
+        for i in 0..<rawDrives.count {
+            let d = rawDrives[i]
+            let driveId = d["id"] as? Int ?? 0
+            guard driveId > 0 else { continue }
+
+            let startedAt = d["started_at"] as? Int ?? (d["starting_time"] as? Int ?? 0)
+            let endedAt = d["ended_at"] as? Int ?? (d["ending_time"] as? Int ?? 0)
+            let dtStart = startedAt > 0 ? Date(timeIntervalSince1970: TimeInterval(startedAt)) : nil
+            let dtEnd = endedAt > 0 ? Date(timeIntervalSince1970: TimeInterval(endedAt)) : nil
+
+            let startTimeStr = dtStart != nil ? startFormatter.string(from: dtStart!) : "--"
+            let endTimeStr = dtEnd != nil ? fullFormatter.string(from: dtEnd!) : "--"
+
+            let timeRange: String
+            if let d1 = dtStart, let d2 = dtEnd {
+                if Calendar.current.isDate(d1, inSameDayAs: d2) {
+                    timeRange = "\(startFormatter.string(from: d1)) ~ \(endFormatter.string(from: d2))"
+                } else {
+                    timeRange = "\(startFormatter.string(from: d1)) ~ \(crossFormatter.string(from: d2))"
+                }
+            } else if dtStart != nil {
+                timeRange = "\(startTimeStr) ~ 进行中"
+            } else {
+                timeRange = "--"
+            }
+
+            let durationMin = (endedAt > startedAt && startedAt > 0) ? Int(round(Double(endedAt - startedAt) / 60.0)) : 0
+            let miles = d["odometer_distance"] as? Double ?? 0
+            let km = round(miles * 1.60934 * 10) / 10.0
+            let energy = round((d["energy_used"] as? Double ?? 0) * 100) / 100.0
+            let startLoc = d["starting_saved_location"] as? String ?? d["starting_location"] as? String ?? "未知起点"
+            let endLoc = d["ending_saved_location"] as? String ?? d["ending_location"] as? String ?? "未知终点"
+            let startBat = d["starting_battery"] as? Int ?? 0
+            let endBat = d["ending_battery"] as? Int ?? 0
+            let avgSpeed = round((d["average_speed"] as? Double ?? Double(d["average_speed"] as? Int ?? 0)) * 1.60934)
+            let maxSpeed = round((d["max_speed"] as? Double ?? Double(d["max_speed"] as? Int ?? 0)) * 1.60934)
+            let insideTemp = d["average_inside_temperature"] as? Double ?? 0.0
+            let outsideTemp = d["average_outside_temperature"] as? Double ?? 0.0
+
+            let normalDrive: [String: Any] = [
+                "id": driveId,
+                "is_synthetic": false,
+                "started_at": startedAt,
+                "ended_at": endedAt,
+                "date": startTimeStr,
+                "start_time": startTimeStr,
+                "end_time": endTimeStr,
+                "time_range": timeRange,
+                "duration_min": durationMin,
+                "distance_km": km,
+                "energy_kwh": energy,
+                "start_location": startLoc,
+                "end_location": endLoc,
+                "start_latitude": d["starting_latitude"] as? Double ?? 0.0,
+                "start_longitude": d["starting_longitude"] as? Double ?? 0.0,
+                "end_latitude": d["ending_latitude"] as? Double ?? 0.0,
+                "end_longitude": d["ending_longitude"] as? Double ?? 0.0,
+                "start_battery": startBat,
+                "end_battery": endBat,
+                "avg_speed_kmh": avgSpeed,
+                "max_speed_kmh": maxSpeed,
+                "inside_temp": insideTemp,
+                "outside_temp": outsideTemp
+            ]
+            results.append(normalDrive)
+
+            // Check odometer gap between current drive and previous (older) drive
+            if i + 1 < rawDrives.count {
+                let prev = rawDrives[i + 1]
+                let currStartOdo = d["starting_odometer"] as? Double ?? 0.0
+                let prevEndOdo = prev["ending_odometer"] as? Double ?? 0.0
+                let gapMiles = currStartOdo - prevEndOdo
+
+                // Gap threshold: >= 0.2 miles (~320m) and < 1000 miles (safety bound)
+                if currStartOdo > 0 && prevEndOdo > 0 && gapMiles >= 0.2 && gapMiles < 1000.0 {
+                    let prevEndedAt = prev["ended_at"] as? Int ?? (prev["ending_time"] as? Int ?? 0)
+                    let gapKm = round(gapMiles * 1.60934 * 10) / 10.0
+
+                    // Estimate duration based on typical city speed (25 km/h)
+                    let estimatedDurationSec = max(180, Int((gapKm / 25.0) * 3600.0))
+                    let synEnd = startedAt > 0 ? startedAt : Int(Date().timeIntervalSince1970)
+                    let synStart = max(prevEndedAt, synEnd - estimatedDurationSec)
+                    let synDurationMin = max(1, Int(round(Double(synEnd - synStart) / 60.0)))
+
+                    let dtSynStart = Date(timeIntervalSince1970: TimeInterval(synStart))
+                    let dtSynEnd = Date(timeIntervalSince1970: TimeInterval(synEnd))
+                    let synStartStr = startFormatter.string(from: dtSynStart)
+                    let synEndStr = fullFormatter.string(from: dtSynEnd)
+                    let synTimeRange: String
+                    if Calendar.current.isDate(dtSynStart, inSameDayAs: dtSynEnd) {
+                        synTimeRange = "\(startFormatter.string(from: dtSynStart)) ~ \(endFormatter.string(from: dtSynEnd)) (推算)"
+                    } else {
+                        synTimeRange = "\(startFormatter.string(from: dtSynStart)) ~ \(crossFormatter.string(from: dtSynEnd)) (推算)"
+                    }
+
+                    let synStartLoc = prev["ending_saved_location"] as? String ?? prev["ending_location"] as? String ?? "未知地点"
+                    let synEndLoc = d["starting_saved_location"] as? String ?? d["starting_location"] as? String ?? "未知地点"
+                    let synStartBat = prev["ending_battery"] as? Int ?? 0
+                    let synEndBat = d["starting_battery"] as? Int ?? synStartBat
+                    let synAvgSpeed = round(gapKm / (Double(max(60, synEnd - synStart)) / 3600.0))
+
+                    // Deterministic negative ID to ensure distinct identity and prevent collision
+                    let synId = -(abs(driveId) * 10 + 9)
+
+                    let syntheticDrive: [String: Any] = [
+                        "id": synId,
+                        "is_synthetic": true,
+                        "started_at": synStart,
+                        "ended_at": synEnd,
+                        "date": synStartStr,
+                        "start_time": synStartStr,
+                        "end_time": synEndStr,
+                        "time_range": synTimeRange,
+                        "duration_min": synDurationMin,
+                        "distance_km": gapKm,
+                        "energy_kwh": 0.0,
+                        "start_location": synStartLoc,
+                        "end_location": synEndLoc,
+                        "start_latitude": prev["ending_latitude"] as? Double ?? 0.0,
+                        "start_longitude": prev["ending_longitude"] as? Double ?? 0.0,
+                        "end_latitude": d["starting_latitude"] as? Double ?? 0.0,
+                        "end_longitude": d["starting_longitude"] as? Double ?? 0.0,
+                        "start_battery": synStartBat,
+                        "end_battery": synEndBat,
+                        "avg_speed_kmh": synAvgSpeed,
+                        "max_speed_kmh": synAvgSpeed,
+                        "inside_temp": 0.0,
+                        "outside_temp": 0.0,
+                        "note": "冷启动离线补偿行程 (仪表盘跳变 \(gapKm) km)"
+                    ]
+                    results.append(syntheticDrive)
+                }
+            }
+        }
+        return results
     }
 
     /// Sends loaded driving path GPS points to UI.
