@@ -1051,12 +1051,13 @@
     .nav-fav-delete-btn {
       background: none;
       border: 1px solid transparent;
-      border-radius: 3px;
+      border-radius: 4px;
       cursor: pointer;
-      font-size: 13px;
-      padding: 3px 6px;
+      font-size: 14px;
+      padding: 4px 8px;
       color: var(--muted);
       transition: background 0.1s, color 0.1s, border-color 0.1s;
+      flex: none;
     }
     .nav-fav-delete-btn:hover {
       background: #FEE2E2;
@@ -2295,10 +2296,7 @@
                   </div>
                 </div>
               </div>
-              <div style="display:flex;align-items:center;gap:6px;flex:none;" onclick="event.stopPropagation()">
-                <button class="btn btn-sm btn-primary" style="padding:3px 8px !important;font-size:11px !important;" onclick="selectFavoriteAsDestination('${fav.id}')">🎯 选定</button>
-                <button class="nav-fav-delete-btn" title="删除此常用地址" onclick="deleteFavoriteItem('${fav.id}')">🗑️</button>
-              </div>
+              <button class="nav-fav-delete-btn" title="删除此常用地址" onclick="event.stopPropagation(); deleteFavoriteItem('${fav.id}')">🗑️</button>
             </div>
           `;
         });
