@@ -1031,6 +1031,38 @@
     .nav-fav-input:focus {
       border-color: var(--blue);
     }
+    .nav-fav-card-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      box-shadow: 1px 1px 0 0 var(--border);
+      transition: background 0.1s, transform 0.1s;
+    }
+    .nav-fav-card-item:hover {
+      background: #FEF08A;
+      transform: translateY(-1px);
+    }
+    .nav-fav-delete-btn {
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 3px 6px;
+      color: var(--muted);
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+    }
+    .nav-fav-delete-btn:hover {
+      background: #FEE2E2;
+      border-color: #EF4444;
+      color: #DC2626;
+    }
     .btn-sm {
       padding: 4px 10px !important;
       font-size: 11px !important;
@@ -2026,7 +2058,7 @@
     }
 
     // Refresh favorite chips and drawer values
-    updateFavoriteChipsUI();
+    renderFavoritesUI();
 
     // Auto focus search input
     setTimeout(() => {
@@ -2140,47 +2172,139 @@
     }
   }
 
-  function updateFavoriteChipsUI() {
-    const homeVal = localStorage.getItem('tesla_saved_home') || '';
-    const workVal = localStorage.getItem('tesla_saved_work') || '';
+  function getFavoriteIcon(title) {
+    if (!title) return '📍';
+    const t = title.toLowerCase();
+    if (t.includes('家') || t.includes('宅') || t.includes('home')) return '🏠';
+    if (t.includes('公司') || t.includes('工位') || t.includes('办') || t.includes('work') || t.includes('office')) return '🏢';
+    if (t.includes('学') || t.includes('校') || t.includes('school')) return '🏫';
+    if (t.includes('超充') || t.includes('充电') || t.includes('电') || t.includes('charge')) return '⚡';
+    if (t.includes('机场') || t.includes('航站') || t.includes('airport')) return '✈️';
+    if (t.includes('咖啡') || t.includes('星巴克') || t.includes('coffee') || t.includes('starbucks')) return '☕';
+    if (t.includes('商场') || t.includes('超市') || t.includes('mall') || t.includes('aeon') || t.includes('永旺')) return '🛒';
+    if (t.includes('医院') || t.includes('门诊') || t.includes('hospital')) return '🏥';
+    if (t.includes('车站') || t.includes('地铁') || t.includes('站') || t.includes('station')) return '🚉';
+    if (t.includes('健身') || t.includes('gym')) return '🏋️';
+    if (t.includes('公园') || t.includes('park')) return '🌳';
+    if (t.includes('饭店') || t.includes('餐厅') || t.includes('居酒屋') || t.includes('餐')) return '🍴';
+    return '📍';
+  }
 
-    // Update Home Chip
-    const chipTextHome = document.getElementById('chip-text-home');
-    const chipBadgeHome = document.getElementById('chip-badge-home');
-    if (chipTextHome && chipBadgeHome) {
-      if (homeVal.trim()) {
-        const shortHome = homeVal.split(' ')[0] || homeVal;
-        chipTextHome.textContent = `🏠 自宅 (${shortHome})`;
-        chipBadgeHome.textContent = '已设置';
-        chipBadgeHome.classList.add('configured');
-      } else {
-        chipTextHome.textContent = '🏠 自宅 (未配置)';
-        chipBadgeHome.textContent = '未设置';
-        chipBadgeHome.classList.remove('configured');
+  function getNavFavorites() {
+    let list = [];
+    try {
+      const raw = localStorage.getItem('tesla_nav_favorites');
+      if (raw) {
+        list = JSON.parse(raw);
+      }
+    } catch (e) {
+      console.error('Failed to parse favorites:', e);
+    }
+
+    // Auto-migration from legacy home & work keys if empty
+    if (!list || list.length === 0) {
+      const legacyHome = localStorage.getItem('tesla_saved_home');
+      const legacyWork = localStorage.getItem('tesla_saved_work');
+      list = [];
+      if (legacyHome && legacyHome.trim()) {
+        list.push({
+          id: 'fav_migrated_home',
+          title: '自宅',
+          address: legacyHome.trim()
+        });
+      }
+      if (legacyWork && legacyWork.trim()) {
+        list.push({
+          id: 'fav_migrated_work',
+          title: '公司',
+          address: legacyWork.trim()
+        });
+      }
+      if (list.length > 0) {
+        saveNavFavorites(list);
       }
     }
 
-    // Update Work Chip
-    const chipTextWork = document.getElementById('chip-text-work');
-    const chipBadgeWork = document.getElementById('chip-badge-work');
-    if (chipTextWork && chipBadgeWork) {
-      if (workVal.trim()) {
-        const shortWork = workVal.split(' ')[0] || workVal;
-        chipTextWork.textContent = `🏢 公司 (${shortWork})`;
-        chipBadgeWork.textContent = '已设置';
-        chipBadgeWork.classList.add('configured');
+    return Array.isArray(list) ? list : [];
+  }
+
+  function saveNavFavorites(list) {
+    try {
+      localStorage.setItem('tesla_nav_favorites', JSON.stringify(list));
+    } catch (e) {
+      console.error('Failed to save favorites:', e);
+    }
+  }
+
+  function renderFavoritesUI() {
+    const favorites = getNavFavorites();
+
+    // 1. Populate top row quick chips
+    const chipsContainer = document.getElementById('nav-fav-chips-container');
+    if (chipsContainer) {
+      if (favorites.length === 0) {
+        chipsContainer.innerHTML = `
+          <div class="nav-chip" onclick="toggleFavoritesDrawer(true)" style="border-style:dashed;color:var(--muted);font-weight:normal;">
+            <span>➕ 暂无常用地址，点击配置</span>
+          </div>
+        `;
       } else {
-        chipTextWork.textContent = '🏢 常用公司 (未配置)';
-        chipBadgeWork.textContent = '未设置';
-        chipBadgeWork.classList.remove('configured');
+        let chipsHtml = '';
+        favorites.forEach(fav => {
+          const icon = getFavoriteIcon(fav.title);
+          chipsHtml += `
+            <div class="nav-chip" onclick="selectFavoriteAsDestination('${fav.id}')" title="${fav.address || fav.title}">
+              <span>${icon} ${fav.title}</span>
+            </div>
+          `;
+        });
+        chipsContainer.innerHTML = chipsHtml;
       }
     }
 
-    // Sync input values in drawer if drawer exists
-    const inputHome = document.getElementById('fav-input-home');
-    const inputWork = document.getElementById('fav-input-work');
-    if (inputHome) inputHome.value = homeVal;
-    if (inputWork) inputWork.value = workVal;
+    // 2. Populate favorites list in drawer
+    const listContainer = document.getElementById('nav-fav-items-list');
+    const countText = document.getElementById('nav-fav-count-text');
+    if (countText) {
+      countText.textContent = `共 ${favorites.length} 个常用地址`;
+    }
+
+    if (listContainer) {
+      if (favorites.length === 0) {
+        listContainer.innerHTML = `
+          <div style="font-size:12px;color:var(--muted);text-align:center;padding:16px 0;background:#F8FAFC;border:1px dashed var(--border);border-radius:4px;">
+            暂无常用地址，可在下方输入添加或在候选地中点击「⭐ 设为常用」
+          </div>
+        `;
+      } else {
+        let itemsHtml = '';
+        favorites.forEach(fav => {
+          const icon = getFavoriteIcon(fav.title);
+          const hasCoords = fav.lat && fav.lng;
+          itemsHtml += `
+            <div class="nav-fav-card-item" onclick="selectFavoriteAsDestination('${fav.id}')" title="点击选定作为目的地">
+              <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+                <span style="font-size:18px;flex:none;">${icon}</span>
+                <div style="min-width:0;flex:1;">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-weight:700;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${fav.title}</span>
+                    ${hasCoords ? '<span style="font-size:10px;padding:1px 5px;background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:3px;font-weight:700;">精准坐标</span>' : ''}
+                  </div>
+                  <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">
+                    ${fav.address || '（无地址详情）'}
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;flex:none;" onclick="event.stopPropagation()">
+                <button class="btn btn-sm btn-primary" style="padding:3px 8px !important;font-size:11px !important;" onclick="selectFavoriteAsDestination('${fav.id}')">🎯 选定</button>
+                <button class="nav-fav-delete-btn" title="删除此常用地址" onclick="deleteFavoriteItem('${fav.id}')">🗑️</button>
+              </div>
+            </div>
+          `;
+        });
+        listContainer.innerHTML = itemsHtml;
+      }
+    }
   }
 
   function toggleFavoritesDrawer(forceState = null) {
@@ -2197,92 +2321,127 @@
 
     drawer.style.display = willShow ? 'block' : 'none';
     if (toggleBtn) {
-      toggleBtn.textContent = willShow ? '⚙️ 收起常用设置 ▴' : '⚙️ 常用地址设置 ▾';
+      toggleBtn.textContent = willShow ? '⚙️ 收起常用列表 ▴' : '⚙️ 常用地址列表 ▾';
     }
 
     if (willShow) {
-      updateFavoriteChipsUI();
+      renderFavoritesUI();
     }
   }
 
-  function saveFavoritesFromDrawer() {
-    const homeInput = document.getElementById('fav-input-home');
-    const workInput = document.getElementById('fav-input-work');
+  function addNewFavorite() {
+    const titleInput = document.getElementById('new-fav-title');
+    const addressInput = document.getElementById('new-fav-address');
+    if (!titleInput || !addressInput) return;
 
-    const homeVal = homeInput ? homeInput.value.trim() : '';
-    const workVal = workInput ? workInput.value.trim() : '';
+    const title = titleInput.value.trim();
+    const address = addressInput.value.trim();
 
-    if (homeVal) {
-      localStorage.setItem('tesla_saved_home', homeVal);
-    } else {
-      localStorage.removeItem('tesla_saved_home');
+    if (!title) {
+      showToast('请输入常用地址名称 (如: 家/公司/健身房)');
+      titleInput.focus();
+      return;
+    }
+    if (!address) {
+      showToast('请输入常用地址或目的地详情');
+      addressInput.focus();
+      return;
     }
 
-    if (workVal) {
-      localStorage.setItem('tesla_saved_work', workVal);
-    } else {
-      localStorage.removeItem('tesla_saved_work');
-    }
+    const favorites = getNavFavorites();
+    const newFav = {
+      id: 'fav_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      title: title,
+      address: address
+    };
+    favorites.push(newFav);
+    saveNavFavorites(favorites);
 
-    updateFavoriteChipsUI();
-    showToast('个人常驻地址已更新保存');
-    toggleFavoritesDrawer(false);
+    titleInput.value = '';
+    addressInput.value = '';
+
+    renderFavoritesUI();
+    showToast(`已添加常用地址「${title}」`);
   }
 
-  function clearFavoriteSlot(slot) {
-    if (slot === 'home') {
-      localStorage.removeItem('tesla_saved_home');
-      const input = document.getElementById('fav-input-home');
-      if (input) input.value = '';
-      showToast('已清空自宅地址');
-    } else if (slot === 'work') {
-      localStorage.removeItem('tesla_saved_work');
-      const input = document.getElementById('fav-input-work');
-      if (input) input.value = '';
-      showToast('已清空公司地址');
+  function deleteFavoriteItem(id) {
+    let favorites = getNavFavorites();
+    const target = favorites.find(f => f.id === id);
+    favorites = favorites.filter(f => f.id !== id);
+    saveNavFavorites(favorites);
+    renderFavoritesUI();
+    showToast(target ? `已删除常用地址「${target.title}」` : '常用地址已删除');
+  }
+
+  function selectFavoriteAsDestination(favId) {
+    const favorites = getNavFavorites();
+    const fav = favorites.find(f => f.id === favId);
+    if (!fav) return;
+
+    const queryInput = document.getElementById('nav-modal-query-input');
+    if (queryInput) {
+      queryInput.value = fav.address ? `${fav.title} (${fav.address})` : fav.title;
     }
-    updateFavoriteChipsUI();
+
+    // If coordinates are already resolved and available:
+    if (fav.lat && fav.lng) {
+      let distanceKm = null;
+      if (currentVehicleLoc.lat && currentVehicleLoc.lng && typeof haversineDistanceMeters === 'function') {
+        const meters = haversineDistanceMeters(currentVehicleLoc.lat, currentVehicleLoc.lng, fav.lat, fav.lng);
+        distanceKm = (meters / 1000).toFixed(1);
+      }
+      const candidate = {
+        name: fav.title,
+        address: fav.address || fav.title,
+        lat: Number(fav.lat),
+        lng: Number(fav.lng),
+        distance_km: distanceKm,
+        engine: 'favorites_saved'
+      };
+
+      navCandidates = [candidate];
+      selectedCandidateIndex = 0;
+      renderNavCandidates(navCandidates);
+      selectNavCandidate(0);
+      setNavModalStatus('success', `已选定常用地址「${fav.title}」`, 'direct');
+      showToast(`已选定「${fav.title}」，可直接点击推送到车机`);
+    } else {
+      // Manually added without lat/lng, trigger AI/OSM lookup
+      showToast(`正在解算「${fav.title}」精准路线...`);
+      handleNavSearch(fav.address || fav.title);
+    }
+  }
+
+  function saveCandidateAsFavorite(index) {
+    if (!navCandidates || !navCandidates[index]) return;
+    const cand = navCandidates[index];
+    const customTitle = prompt('设置常用地址名称 (如: 家、公司、常去商场):', cand.name);
+    if (customTitle === null) return;
+    const finalTitle = customTitle.trim() || cand.name;
+
+    const favorites = getNavFavorites();
+    const newFav = {
+      id: 'fav_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      title: finalTitle,
+      address: cand.address || cand.name,
+      lat: cand.lat,
+      lng: cand.lng
+    };
+
+    favorites.push(newFav);
+    saveNavFavorites(favorites);
+    renderFavoritesUI();
+    showToast(`已将「${finalTitle}」添加至常用地址`);
   }
 
   function handleQuickChip(type) {
-    if (type === 'home') {
-      const savedHome = localStorage.getItem('tesla_saved_home');
-      if (savedHome && savedHome.trim()) {
-        handleNavSearch(savedHome.trim());
-      } else {
-        toggleFavoritesDrawer(true);
-        const input = document.getElementById('fav-input-home');
-        if (input) input.focus();
-        showToast('尚未配置家庭地址，请在展开面板中输入');
-      }
-    } else if (type === 'work') {
-      const savedWork = localStorage.getItem('tesla_saved_work');
-      if (savedWork && savedWork.trim()) {
-        handleNavSearch(savedWork.trim());
-      } else {
-        toggleFavoritesDrawer(true);
-        const input = document.getElementById('fav-input-work');
-        if (input) input.focus();
-        showToast('尚未配置公司地址，请在展开面板中输入');
-      }
-    } else if (type === 'supercharger') {
+    if (type === 'supercharger') {
       handleNavSearch('离我最近的特斯拉超级充电站');
     } else if (type === 'starbucks') {
       handleNavSearch('离我最近的星巴克');
     } else if (type === 'airport') {
       handleNavSearch('中部国際空港');
     }
-  }
-
-  function saveAsFavorite(index, type) {
-    if (!navCandidates || !navCandidates[index]) return;
-    const cand = navCandidates[index];
-    const key = type === 'home' ? 'tesla_saved_home' : 'tesla_saved_work';
-    const label = type === 'home' ? '家庭常驻地址' : '公司常驻地址';
-    const val = cand.name + ' (' + cand.address + ')';
-    localStorage.setItem(key, val);
-    updateFavoriteChipsUI();
-    showToast(`已将「${cand.name}」设为常用${label}`);
   }
 
   function setNavModalStatus(type, msg, engine = '', fallbackReason = '') {
@@ -2369,8 +2528,7 @@
             <div class="nav-candidate-footer">
               <span>📍 ${Number(cand.lat).toFixed(5)}, ${Number(cand.lng).toFixed(5)}</span>
               <div style="display:flex;gap:4px;" onclick="event.stopPropagation()">
-                <button class="nav-candidate-fav-btn" title="保存为家" onclick="saveAsFavorite(${idx}, 'home')">🏠 设为家</button>
-                <button class="nav-candidate-fav-btn" title="保存为公司" onclick="saveAsFavorite(${idx}, 'work')">🏢 设为公司</button>
+                <button class="nav-candidate-fav-btn" title="保存到常用地址" onclick="saveCandidateAsFavorite(${idx})">⭐ 设为常用</button>
               </div>
             </div>
           </div>
@@ -3920,47 +4078,42 @@
         </div>
       </div>
 
-      <!-- Row 2: Personal Configured Favorites (Home / Work / Custom) -->
+      <!-- Row 2: Personal Configured Favorites (Multi-item List) -->
       <div style="display:flex;flex-direction:column;gap:5px;margin-top:2px;">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">
-            📍 个人常驻地址 (需设定，点击直达):
+            📍 个人常用地址 (点击直达选定):
           </span>
           <button class="nav-chip-toggle-btn" onclick="toggleFavoritesDrawer()" id="nav-fav-toggle-btn">
-            ⚙️ 常用地址设置 ▾
+            ⚙️ 常用地址列表 ▾
           </button>
         </div>
-        <div class="nav-chips-container">
-          <div class="nav-chip" id="chip-fav-home" onclick="handleQuickChip('home')">
-            <span id="chip-text-home">🏠 自宅 (回家)</span>
-            <span class="chip-badge-status" id="chip-badge-home">未设置</span>
-          </div>
-          <div class="nav-chip" id="chip-fav-work" onclick="handleQuickChip('work')">
-            <span id="chip-text-work">🏢 常用公司</span>
-            <span class="chip-badge-status" id="chip-badge-work">未设置</span>
-          </div>
+        <div class="nav-chips-container" id="nav-fav-chips-container">
+          <!-- Dynamically populated chips -->
         </div>
       </div>
 
-      <!-- Inline Drawer: Favorites Settings Panel -->
+      <!-- Inline Drawer: All Favorites List Panel -->
       <div id="nav-favorites-drawer" class="nav-favorites-drawer" style="display:none;">
         <div style="font-weight:700;font-size:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
-          <span>⚙️ 个人常驻地址配置 (保存在本地设备)</span>
-          <span style="font-size:11px;color:var(--muted);font-weight:normal;">也可在候选地卡片点击「设为家/公司」一键绑定</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span>⭐</span>
+            <span>常用收藏地址清单 (点击任意条目即可选定直推车机)</span>
+          </div>
+          <span style="font-size:11px;color:var(--muted);font-weight:normal;" id="nav-fav-count-text">共 0 个常用地址</span>
         </div>
-        <div class="nav-fav-input-row">
-          <span class="nav-fav-label">🏠 自宅地址:</span>
-          <input type="text" id="fav-input-home" class="nav-fav-input" placeholder="输入家庭地址或商圈小区 (如: 愛知県名古屋市名東区...)" />
-          <button class="btn btn-sm" onclick="clearFavoriteSlot('home')">清空</button>
+
+        <!-- Scrollable list of all favorite addresses -->
+        <div id="nav-fav-items-list" style="max-height:190px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:2px;">
+          <!-- Dynamically populated favorite cards with 🗑️ delete buttons -->
         </div>
-        <div class="nav-fav-input-row">
-          <span class="nav-fav-label">🏢 公司地址:</span>
-          <input type="text" id="fav-input-work" class="nav-fav-input" placeholder="输入公司大楼或详细门牌 (如: 名古屋市中区栄3丁目...)" />
-          <button class="btn btn-sm" onclick="clearFavoriteSlot('work')">清空</button>
-        </div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
-          <button class="btn btn-sm" onclick="toggleFavoritesDrawer(false)">收起</button>
-          <button class="btn btn-primary btn-sm" onclick="saveFavoritesFromDrawer()">💾 保存设置</button>
+
+        <!-- Add new favorite row with custom title & address -->
+        <div style="margin-top:10px;padding:8px 10px;background:#fff;border:1px solid var(--border);border-radius:6px;display:flex;gap:8px;align-items:center;">
+          <span style="font-size:12px;font-weight:700;white-space:nowrap;">➕ 新增常用:</span>
+          <input type="text" id="new-fav-title" class="nav-fav-input" style="width:110px;flex:none;" placeholder="名称 (如: 健身房)" onkeydown="if(event.key==='Enter') document.getElementById('new-fav-address').focus();" />
+          <input type="text" id="new-fav-address" class="nav-fav-input" style="flex:1;" placeholder="输入目的地名称、商圈或地址..." onkeydown="if(event.key==='Enter') addNewFavorite();" />
+          <button class="btn btn-primary btn-sm" onclick="addNewFavorite()" style="white-space:nowrap;font-weight:700;">💾 保存收藏</button>
         </div>
       </div>
 
