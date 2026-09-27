@@ -5,6 +5,8 @@ BUNDLE_DIR = $(APP_NAME).app
 CONTENTS_DIR = $(BUNDLE_DIR)/Contents
 MACOS_DIR = $(CONTENTS_DIR)/MacOS
 RESOURCES_DIR = $(CONTENTS_DIR)/Resources
+VERSION = 2.0
+BUILD_DATE = $(shell date +%Y%m%d)
 
 all: build
 
@@ -40,9 +42,9 @@ app: release
     <key>CFBundlePackageType</key>\
     <string>APPL</string>\
     <key>CFBundleShortVersionString</key>\
-    <string>2.0</string>\
+    <string>$(VERSION)</string>\
     <key>CFBundleVersion</key>\
-    <string>1</string>\
+    <string>$(BUILD_DATE)</string>\
     <key>LSMinimumSystemVersion</key>\
     <string>13.0</string>\
     <key>NSHighResolutionCapable</key>\

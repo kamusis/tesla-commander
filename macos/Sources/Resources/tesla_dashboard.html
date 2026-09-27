@@ -129,6 +129,21 @@
     .btn-red { background: var(--red); color: var(--white); border-color: var(--border); }
     .btn-green { background: var(--green); color: var(--white); border-color: var(--border); }
 
+    .btn:disabled, .btn.btn-disabled {
+      opacity: 0.45 !important;
+      cursor: not-allowed !important;
+      pointer-events: none !important;
+      filter: grayscale(60%) !important;
+      box-shadow: none !important;
+      transform: none !important;
+    }
+
+    button.refreshing {
+      animation: cmd-spin 0.8s linear infinite;
+      pointer-events: none;
+      opacity: 0.6;
+    }
+
     /* ── TABS ── */
     .tabs-bar {
       background: var(--white);
@@ -243,12 +258,6 @@
       border-radius: 4px;
       padding: 18px;
       box-shadow: 2px 2px 0 0 var(--border);
-      transition: transform 100ms, box-shadow 100ms;
-    }
-
-    .hero-card:hover {
-      transform: translate(2px, 2px);
-      box-shadow: -2px -2px 0 0 var(--border);
     }
 
     .card-label {
@@ -427,11 +436,61 @@
     }
 
     .control-card {
+      position: relative;
       background: var(--white);
       border: 1px solid var(--border);
       border-radius: 4px;
       padding: 18px;
       box-shadow: 2px 2px 0 0 var(--border);
+    }
+
+    .card-action-spinner {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--red);
+      background: rgba(225, 29, 72, 0.08);
+      border: 1px solid var(--red);
+      border-radius: 3px;
+      padding: 3px 8px;
+      box-shadow: 1px 1px 0 0 var(--border);
+      z-index: 5;
+    }
+
+    .card-action-spinner.active {
+      display: inline-flex;
+    }
+
+    .card-action-spinner.success {
+      display: inline-flex;
+      color: var(--green);
+      background: rgba(22, 163, 74, 0.08);
+      border-color: var(--green);
+    }
+
+    .card-action-spinner.error {
+      display: inline-flex;
+      color: var(--red);
+      background: rgba(239, 68, 68, 0.12);
+      border-color: var(--red);
+    }
+
+    .spin-icon {
+      width: 13px;
+      height: 13px;
+      animation: cmd-spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes cmd-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
     }
 
     .control-card-title {
@@ -716,10 +775,10 @@
 <div class="tabs-bar">
   <div class="tabs-inner">
     <div class="tab active" onclick="switchTab('overview', this)">01 / 车辆全貌与遥测</div>
-    <div class="tab" onclick="switchTab('charging', this)">02 / 充电与电能分析</div>
-    <div class="tab" onclick="switchTab('hardware', this)">03 / 硬件架构与底盘</div>
-    <div class="tab" onclick="switchTab('controls', this)">04 / 快捷控制中心</div>
-    <div class="tab" onclick="switchTab('drives', this)">05 / 行驶轨迹与清单</div>
+    <div class="tab" onclick="switchTab('drives', this)">02 / 行驶轨迹与清单</div>
+    <div class="tab" onclick="switchTab('controls', this)">03 / 快捷控制中心</div>
+    <div class="tab" onclick="switchTab('charging', this)">04 / 充电与电能分析</div>
+    <div class="tab" onclick="switchTab('hardware', this)">05 / 硬件架构与底盘</div>
   </div>
 </div>
 
@@ -739,6 +798,7 @@
         </p>
         <div class="hero-meta-chips">
           <span id="chip-vin" class="chip">VIN: --</span>
+          <span id="chip-motion" class="chip">车辆: 已驻车</span>
           <span id="chip-status" class="chip chip-green">状态: --</span>
           <span id="chip-location" class="chip chip-blue">位置: --</span>
           <span id="chip-firmware" class="chip">固件: --</span>
@@ -879,13 +939,16 @@
     <section style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
       <div class="hero-card">
         <div class="card-label">// GPS POSITION & ENVIRONMENT</div>
-        <div style="font-size:16px;font-weight:800;margin-bottom:6px;">📍 当前驻车地理位置</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div id="gps-card-title" style="font-size:16px;font-weight:800;">📍 车辆当前地理位置</div>
+          <span id="gps-motion-badge" class="chip" style="font-size:10px;font-weight:700;">已驻车 (P挡)</span>
+        </div>
         <p id="gps-address" style="color:var(--muted);font-size:13px;margin-bottom:12px;">--</p>
         <div style="font-family:var(--font-mono);font-size:12px;background:var(--bg);padding:10px;border:1px solid rgba(0,0,0,0.12);border-radius:4px;margin-bottom:12px;">
           <span id="gps-coords">纬度 (Lat): -- | 经度 (Lng): --</span><br/>
           <span id="gps-saved-location">已保存位置: --</span>
         </div>
-        <a id="gps-maps-link" href="#" target="_blank" class="btn btn-primary">在 Google Maps 查看位置 ↗</a>
+        <a id="gps-maps-link" href="#" target="_blank" class="btn btn-primary" onclick="openGoogleMaps(event)">在 Google Maps 查看位置 ↗</a>
       </div>
 
       <div class="hero-card">
@@ -1101,17 +1164,19 @@
     </div>
 
     <div class="control-deck">
-      <div class="control-card">
+      <div class="control-card" id="card-lighting">
+        <div class="card-action-spinner"></div>
         <div class="control-card-title">🚗 寻车与灯光</div>
         <div class="control-desc">声光快速定位车辆，地库或夜间寻车秒级响应。</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">执行动作: 发送短促鸣笛或双跳灯闪烁</div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-primary" onclick="triggerNativeCmd('honk')">鸣笛寻车</button>
-          <button class="btn" onclick="triggerNativeCmd('flash')">双跳闪灯</button>
+          <button class="btn btn-primary" onclick="triggerNativeCmd('honk', {}, this)">鸣笛寻车</button>
+          <button class="btn" onclick="triggerNativeCmd('flash', {}, this)">双跳闪灯</button>
         </div>
       </div>
 
-      <div class="control-card">
+      <div class="control-card" id="card-climate">
+        <div class="card-action-spinner"></div>
         <div class="control-card-title">❄️ 智能座舱空调</div>
         <div class="control-desc">远程预热/预冷座舱，达到设定温度后恒温保暖/保冷。</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">当前车内: <span id="ctrl-cabin-temp" class="mono" style="font-weight:700;color:var(--text);">--°C</span> (<span id="ctrl-hvac-status">已关闭</span>)</div>
@@ -1124,48 +1189,52 @@
           </div>
         </div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-green" onclick="triggerNativeCmd('start_climate', {temperature: currentTargetTemp})">开启空调</button>
-          <button class="btn btn-red" onclick="triggerNativeCmd('stop_climate')">关闭</button>
+          <button class="btn btn-green" onclick="triggerNativeCmd('start_climate', {temperature: currentTargetTemp}, this)">开启空调</button>
+          <button class="btn btn-red" onclick="triggerNativeCmd('stop_climate', {}, this)">关闭</button>
         </div>
       </div>
 
-      <div class="control-card">
+      <div class="control-card" id="card-nav">
+        <div class="card-action-spinner"></div>
         <div class="control-card-title">🗺️ 目的地直推导航</div>
         <div class="control-desc">输入目的地商户名或地址，直接下发到车机地图并开启路线规划。</div>
         <div style="display:flex;gap:8px;margin-top:10px;">
           <input type="text" id="nav-target" placeholder="输入目的地 (如: 名古屋市科学馆)..." class="native-input" />
-          <button class="btn btn-primary" onclick="sendNativeNav()">推送到车机</button>
+          <button class="btn btn-primary" onclick="sendNativeNav(this)">推送到车机</button>
         </div>
       </div>
 
-      <div class="control-card">
+      <div class="control-card" id="card-charging">
+        <div class="card-action-spinner"></div>
         <div class="control-card-title">⚡ 充电上限调节</div>
         <div class="control-desc">灵活设定日常充电上限以保护电池，长途前一键充满。</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">当前上限: <span class="mono" style="font-weight:700;color:var(--text);" id="charge-limit-display">--%</span> (<span id="ctrl-charging-desc">监测中</span>)</div>
         <div style="display:flex;gap:8px;margin-bottom:8px;">
-          <button class="btn" onclick="setChargeLimit(80)">80% 日常使用</button>
-          <button class="btn" onclick="setChargeLimit(100)">100% 长途出行</button>
+          <button class="btn" onclick="setChargeLimit(80, this)">80% 日常使用</button>
+          <button class="btn" onclick="setChargeLimit(100, this)">100% 长途出行</button>
         </div>
-        <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="triggerNativeCmd('stop_charging')">停止充电</button>
+        <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="triggerNativeCmd('stop_charging', {}, this)">停止充电</button>
       </div>
 
-      <div class="control-card">
+      <div class="control-card" id="card-doors">
+        <div class="card-action-spinner"></div>
         <div class="control-card-title">🪟 车门与车窗控制</div>
         <div class="control-desc">天热时开缝透气，下雨或离车时一键关窗落锁。</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">车窗状态: <span id="ctrl-window-status" class="mono" style="font-weight:700;color:var(--text);">--</span> · <span id="ctrl-lock-status">车锁: --</span></div>
         <div style="display:flex;gap:8px;">
-          <button class="btn" onclick="triggerNativeCmd('vent')">车窗透气留缝</button>
-          <button class="btn" onclick="triggerNativeCmd('close_windows')">一键完全关窗</button>
+          <button class="btn" onclick="triggerNativeCmd('vent', {}, this)">车窗透气留缝</button>
+          <button class="btn" onclick="triggerNativeCmd('close_windows', {}, this)">一键完全关窗</button>
         </div>
       </div>
 
-      <div class="control-card">
+      <div class="control-card" id="card-sentry">
+        <div class="card-action-spinner"></div>
         <div class="control-card-title">🛡️ 哨兵防盗模式</div>
         <div class="control-desc">远程开关全车摄像头哨兵防盗监控与录制。</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">哨兵状态: <span id="ctrl-sentry-status" class="mono" style="font-weight:700;color:var(--text);">--</span></div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-primary" onclick="triggerNativeCmd('sentry_on')">开启哨兵监控</button>
-          <button class="btn" onclick="triggerNativeCmd('sentry_off')">关闭哨兵</button>
+          <button class="btn btn-primary" onclick="triggerNativeCmd('sentry_on', {}, this)">开启哨兵监控</button>
+          <button class="btn" onclick="triggerNativeCmd('sentry_off', {}, this)">关闭哨兵</button>
         </div>
       </div>
     </div>
@@ -1292,33 +1361,176 @@
     }
   }
 
-  function triggerNativeCmd(action, params = {}) {
-    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.teslaNative) {
-      window.webkit.messageHandlers.teslaNative.postMessage({ action: action, params: params });
+  const ACTION_CARD_MAP = {
+    'honk': 'card-lighting',
+    'flash': 'card-lighting',
+    'start_climate': 'card-climate',
+    'stop_climate': 'card-climate',
+    'set_temperature': 'card-climate',
+    'nav': 'card-nav',
+    'set_charge_limit': 'card-charging',
+    'stop_charging': 'card-charging',
+    'start_charging': 'card-charging',
+    'vent': 'card-doors',
+    'close_windows': 'card-doors',
+    'sentry_on': 'card-sentry',
+    'sentry_off': 'card-sentry'
+  };
+
+  const pendingCommands = {};
+
+  function setCardLoading(cardId, action, loading, resultText = null, isSuccess = true) {
+    const card = document.getElementById(cardId);
+    if (!card) return;
+    const spinner = card.querySelector('.card-action-spinner');
+    const buttons = card.querySelectorAll('button:not(.temp-stepper button)');
+
+    if (loading) {
+      buttons.forEach(btn => {
+        btn.disabled = true;
+        btn.classList.add('btn-disabled');
+      });
+      if (spinner) {
+        spinner.className = 'card-action-spinner active';
+        spinner.innerHTML = `
+          <svg class="spin-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+            <path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+          <span>指令下发中...</span>
+        `;
+      }
     } else {
-      showToast('Native Bridge: 已下发指令 ' + action + ' (车机响应 200 OK)');
+      buttons.forEach(btn => {
+        btn.disabled = false;
+        btn.classList.remove('btn-disabled');
+      });
+      if (spinner) {
+        if (resultText) {
+          spinner.className = 'card-action-spinner ' + (isSuccess ? 'success' : 'error');
+          const icon = isSuccess ? '✓' : '✕';
+          spinner.innerHTML = `<span>${icon} ${resultText}</span>`;
+          setTimeout(() => {
+            if (!pendingCommands[action]) {
+              spinner.className = 'card-action-spinner';
+            }
+          }, 1800);
+        } else {
+          spinner.className = 'card-action-spinner';
+        }
+      }
     }
   }
 
-  function sendNativeNav() {
+  function triggerNativeCmd(action, params = {}, btnEl = null) {
+    if (action === 'refresh') {
+      const refreshBtns = document.querySelectorAll('button[onclick*="refresh"]');
+      refreshBtns.forEach(b => {
+        b.disabled = true;
+        b.classList.add('refreshing');
+      });
+      setTimeout(() => {
+        refreshBtns.forEach(b => {
+          b.disabled = false;
+          b.classList.remove('refreshing');
+        });
+      }, 10000);
+    }
+
+    let cardId = null;
+    if (btnEl) {
+      const parentCard = btnEl.closest('.control-card');
+      if (parentCard) cardId = parentCard.id;
+    }
+    if (!cardId) {
+      cardId = ACTION_CARD_MAP[action];
+    }
+
+    if (cardId) {
+      setCardLoading(cardId, action, true);
+
+      if (pendingCommands[action]?.timeoutId) {
+        clearTimeout(pendingCommands[action].timeoutId);
+      }
+      const timeoutId = setTimeout(() => {
+        setCardLoading(cardId, action, false, '超时', false);
+        delete pendingCommands[action];
+      }, 20000);
+
+      pendingCommands[action] = { cardId, timeoutId };
+    }
+
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.teslaNative) {
+      window.webkit.messageHandlers.teslaNative.postMessage({ action: action, params: params });
+    } else {
+      setTimeout(() => {
+        onCommandFinished(action, true, '模拟响应成功');
+        showToast('Native Bridge: 已下发指令 ' + action + ' (模拟响应 200 OK)');
+      }, 1200);
+    }
+  }
+
+  function openGoogleMaps(e) {
+    if (e) e.preventDefault();
+    const mapLink = document.getElementById('gps-maps-link');
+    const url = mapLink ? (mapLink.dataset.url || mapLink.getAttribute('href')) : null;
+    if (url && url !== '#' && !url.endsWith('#')) {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.teslaNative) {
+        window.webkit.messageHandlers.teslaNative.postMessage({
+          action: 'open_url',
+          params: { url: url }
+        });
+      } else {
+        window.open(url, '_blank');
+      }
+    } else {
+      showToast('尚未获取到有效经纬度坐标');
+    }
+  }
+
+  window.onCommandFinished = function(action, success, message) {
+    if (action === 'refresh') {
+      const refreshBtns = document.querySelectorAll('button[onclick*="refresh"]');
+      refreshBtns.forEach(b => {
+        b.disabled = false;
+        b.classList.remove('refreshing');
+      });
+    }
+
+    const pending = pendingCommands[action];
+    if (pending) {
+      clearTimeout(pending.timeoutId);
+      const resultText = success ? '响应成功' : '响应失败';
+      setCardLoading(pending.cardId, action, false, resultText, success);
+      delete pendingCommands[action];
+    }
+  };
+
+  function sendNativeNav(btnEl = null) {
     const dest = document.getElementById('nav-target').value.trim();
     if (!dest) {
       alert('请输入目的地');
       return;
     }
-    triggerNativeCmd('nav', { destination: dest });
+    triggerNativeCmd('nav', { destination: dest }, btnEl);
     showToast('已推送到车机大屏导航: ' + dest);
   }
 
-  function setChargeLimit(limit) {
+  function setChargeLimit(limit, btnEl = null) {
     document.getElementById('charge-limit-display').textContent = limit + '%';
-    triggerNativeCmd('set_charge_limit', { limit: limit });
+    triggerNativeCmd('set_charge_limit', { limit: limit }, btnEl);
     showToast('已设定充电上限为 ' + limit + '%');
   }
 
   // Native Streaming Data Frame Receiver
   window.updateTelemetryFrame = function(frame) {
     if (!frame) return;
+
+    const refreshBtns = document.querySelectorAll('button[onclick*="refresh"]');
+    refreshBtns.forEach(b => {
+      b.disabled = false;
+      b.classList.remove('refreshing');
+    });
 
     // 0. VIN
     if (frame.vin) {
@@ -1342,12 +1554,56 @@
       if (coordsEl) coordsEl.textContent = '纬度 (Lat): ' + Number(frame.latitude).toFixed(6) + ' | 经度 (Lng): ' + Number(frame.longitude).toFixed(6);
 
       const mapLink = document.getElementById('gps-maps-link');
-      if (mapLink) mapLink.href = 'https://maps.google.com/?q=' + frame.latitude + ',' + frame.longitude;
+      if (mapLink) {
+        const mapUrl = 'https://maps.google.com/?q=' + frame.latitude + ',' + frame.longitude;
+        mapLink.href = mapUrl;
+        mapLink.dataset.url = mapUrl;
+      }
     }
     if (frame.saved_location !== undefined) {
       const savedLocEl = document.getElementById('gps-saved-location');
       if (savedLocEl) {
         savedLocEl.textContent = '已保存位置: ' + (frame.saved_location ? frame.saved_location : '未命名地点 (行驶/临时驻车)');
+      }
+    }
+
+    // Dynamic GPS title, badge & top motion chip update based on shift_state / motion
+    const gpsTitleEl = document.getElementById('gps-card-title');
+    const gpsBadgeEl = document.getElementById('gps-motion-badge');
+    const chipMotionEl = document.getElementById('chip-motion');
+    const currentShift = frame.shift_state;
+    const currentSpeed = (frame.speed !== undefined && frame.speed !== null) ? Number(frame.speed) : 0;
+    const isMoving = (currentShift === 'D' || currentShift === 'R' || currentSpeed > 0);
+
+    if (gpsTitleEl) {
+      gpsTitleEl.textContent = isMoving ? '🚗 实时行驶地理位置' : '📍 当前驻车地理位置';
+    }
+    if (gpsBadgeEl) {
+      if (currentShift === 'R') {
+        gpsBadgeEl.textContent = '倒车中 (R挡)';
+        gpsBadgeEl.style.borderColor = 'var(--red)';
+        gpsBadgeEl.style.color = 'var(--red)';
+      } else if (isMoving) {
+        gpsBadgeEl.textContent = currentSpeed > 0 ? `行驶中 · ${Math.round(currentSpeed)} km/h` : '行驶中 (D挡)';
+        gpsBadgeEl.style.borderColor = 'var(--blue)';
+        gpsBadgeEl.style.color = 'var(--blue)';
+      } else {
+        gpsBadgeEl.textContent = '已驻车 (P挡)';
+        gpsBadgeEl.style.borderColor = '';
+        gpsBadgeEl.style.color = '';
+      }
+    }
+
+    if (chipMotionEl) {
+      if (currentShift === 'R') {
+        chipMotionEl.textContent = '车辆: 倒车中 (R)';
+        chipMotionEl.className = 'chip chip-red';
+      } else if (isMoving) {
+        chipMotionEl.textContent = currentSpeed > 0 ? `车辆: 行驶中 · ${Math.round(currentSpeed)} km/h` : '车辆: 行驶中 (D)';
+        chipMotionEl.className = 'chip chip-blue';
+      } else {
+        chipMotionEl.textContent = '车辆: 已驻车';
+        chipMotionEl.className = 'chip';
       }
     }
 

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import WebKit
 
@@ -25,6 +26,15 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
 
     /// Dispatches a command action to Tessie API or refreshes the full state.
     public func handleNativeAction(action: String, params: [String: Any]) {
+        if action == "open_url" {
+            if let urlStr = params["url"] as? String, let url = URL(string: urlStr) {
+                DispatchQueue.main.async {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            return
+        }
+
         if action == "refresh" {
             Task { @MainActor in
                 await refreshVehicleState(manual: true)
@@ -62,10 +72,16 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
                 let msg = res.success ? "\(action) 已成功响应" : "响应: \(res.message)"
                 await MainActor.run {
                     self.showToast(message: "指令已下发: \(msg)")
+                    self.notifyCommandFinished(action: action, success: res.success, message: msg)
+                }
+                if res.success && action != "honk" && action != "flash" {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    await self.refreshVehicleState(manual: false)
                 }
             } catch {
                 await MainActor.run {
                     self.showToast(message: "指令执行异常: \(error.localizedDescription)")
+                    self.notifyCommandFinished(action: action, success: false, message: error.localizedDescription)
                 }
             }
         }
@@ -225,6 +241,9 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
             }
 
             frame["detailed_drives"] = buildDetailedDrives(from: drives)
+
+            // 7. Stabilize Parked Address against GPS Jitter
+            stabilizeParkedAddress(frame: &frame, drives: drives)
 
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -430,6 +449,66 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
         let js = "if (typeof showToast === 'function') { showToast('\(escaped)'); }"
         DispatchQueue.main.async { [weak self] in
             self?.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
+    /// Notifies the web view that an asynchronous vehicle command has completed.
+    public func notifyCommandFinished(action: String, success: Bool, message: String) {
+        let escapedAction = action.replacingOccurrences(of: "'", with: "\\'")
+        let escapedMsg = message
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: " ")
+        let js = "if (typeof onCommandFinished === 'function') { onCommandFinished('\(escapedAction)', \(success), '\(escapedMsg)'); }"
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
+    // MARK: - Parking Address Stabilization
+
+    /// Calculates distance between two GPS coordinates using the Haversine formula (returns meters).
+    private func haversineDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double) -> Double {
+        let r = 6371000.0 // Earth radius in meters
+        let dLat = (lat2 - lat1) * .pi / 180.0
+        let dLon = (lon2 - lon1) * .pi / 180.0
+        let a = sin(dLat / 2.0) * sin(dLat / 2.0) +
+                cos(lat1 * .pi / 180.0) * cos(lat2 * .pi / 180.0) *
+                sin(dLon / 2.0) * sin(dLon / 2.0)
+        let c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a))
+        return r * c
+    }
+
+    /// Stabilizes parked vehicle address by pinning to the last completed trip destination
+    /// when the vehicle is parked, odometer hasn't changed, and GPS drift is within 30 meters.
+    private func stabilizeParkedAddress(frame: inout [String: Any], drives: [[String: Any]]) {
+        guard let lastDrive = drives.first else { return }
+
+        let shift = frame["shift_state"] as? String
+        let speed = frame["speed"] as? Double ?? 0.0
+        let isParked = (shift == "P" || shift == nil) && speed <= 0.0
+        guard isParked else { return }
+
+        let currentOdo = frame["odometer"] as? Double ?? 0.0
+        let lastEndOdo = lastDrive["ending_odometer"] as? Double ?? 0.0
+        let odoNotChanged = (currentOdo > 0 && lastEndOdo > 0) ? (abs(currentOdo - lastEndOdo) < 0.1) : true
+        guard odoNotChanged else { return }
+
+        guard let currentLat = frame["latitude"] as? Double,
+              let currentLng = frame["longitude"] as? Double,
+              let lastEndLat = lastDrive["ending_latitude"] as? Double,
+              let lastEndLng = lastDrive["ending_longitude"] as? Double,
+              lastEndLat != 0.0, lastEndLng != 0.0 else { return }
+
+        let driftMeters = haversineDistanceMeters(lat1: currentLat, lon1: currentLng, lat2: lastEndLat, lon2: lastEndLng)
+        if driftMeters <= 30.0 {
+            if let snapAddress = lastDrive["ending_saved_location"] as? String ?? lastDrive["ending_location"] as? String,
+               !snapAddress.isEmpty {
+                frame["address"] = snapAddress
+                if let savedLoc = lastDrive["ending_saved_location"] as? String, !savedLoc.isEmpty {
+                    frame["saved_location"] = savedLoc
+                }
+            }
         }
     }
 }
