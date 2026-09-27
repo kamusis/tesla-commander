@@ -35,7 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         webConfig.preferences.setValue(true, forKey: "developerExtrasEnabled")
 
         // 3. Create NSWindow
-        let windowRect = NSRect(x: 0, y: 0, width: 1280, height: 860)
+        let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let targetWidth: CGFloat = min(1320, max(960, screenFrame.width - 40))
+        let targetHeight: CGFloat = min(980, max(700, screenFrame.height - 40))
+        let windowRect = NSRect(x: 0, y: 0, width: targetWidth, height: targetHeight)
         self.window = NSWindow(
             contentRect: windowRect,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
