@@ -275,6 +275,14 @@ def cmd_nav(args, client: TessieClient):
     lng = res.get("lng")
     engine = res.get("engine", "unknown")
 
+    candidates = res.get("candidates", [])
+    if len(candidates) > 1:
+        print(f"\n[Nav] Found {len(candidates)} matching candidate(s) (auto-selected closest #1):")
+        for idx, c in enumerate(candidates):
+            mark = "=>" if idx == 0 else "  "
+            dist_str = f" [距车 {c.get('distance_km')} km]" if c.get('distance_km') is not None else ""
+            print(f"  {mark} [{idx+1}] {c.get('name')}{dist_str} - {c.get('address')}")
+
     print(f"\n[Nav] Resolved Destination:")
     print(f"  Name      : {name}")
     print(f"  Address   : {address}")

@@ -559,22 +559,27 @@
     /* Toast */
     #toast {
       position: fixed;
-      bottom: 24px;
+      top: 24px;
       right: 24px;
+      bottom: auto;
       background: var(--text);
       color: var(--gold);
       padding: 12px 20px;
-      border: 1px solid var(--border);
-      border-radius: 4px;
+      border: 2px solid var(--border);
+      border-radius: 6px;
       font-family: var(--font-mono);
-      font-size: 12px;
-      box-shadow: 3px 3px 0 var(--border);
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 4px 4px 0 var(--border);
       display: none;
-      z-index: 9999;
-      animation: fadeIn 0.2s ease-out;
+      z-index: 100000;
+      max-width: 480px;
+      line-height: 1.5;
+      animation: toastSlideIn 0.2s ease-out;
+      pointer-events: auto;
     }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
+    @keyframes toastSlideIn {
+      from { opacity: 0; transform: translateY(-12px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
@@ -748,6 +753,375 @@
       .drives-sidebar { width: 100%; }
       .drive-metrics-grid { grid-template-columns: repeat(2, 1fr); }
     }
+
+    /* ── INTERACTIVE NAVIGATION MODAL ── */
+    .nav-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      z-index: 9999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .nav-modal-backdrop.open {
+      display: flex !important;
+      opacity: 1 !important;
+      pointer-events: auto !important;
+    }
+    .nav-modal-container {
+      background: var(--white);
+      border: 2px solid var(--border);
+      box-shadow: 8px 8px 0 0 var(--border);
+      border-radius: 8px;
+      width: 680px;
+      max-width: 92vw;
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transform: translateY(16px) scale(0.98);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .nav-modal-backdrop.open .nav-modal-container {
+      transform: translateY(0) scale(1);
+    }
+    .nav-modal-header {
+      padding: 14px 20px;
+      background: var(--gold);
+      border-bottom: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-modal-title {
+      font-weight: 800;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .nav-modal-close {
+      border: 2px solid var(--border);
+      background: var(--white);
+      font-weight: 800;
+      font-size: 14px;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border-radius: 4px;
+      box-shadow: 2px 2px 0 0 var(--border);
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .nav-modal-close:hover {
+      transform: translate(-1px, -1px);
+      box-shadow: 3px 3px 0 0 var(--border);
+    }
+    .nav-modal-close:active {
+      transform: translate(1px, 1px);
+      box-shadow: 1px 1px 0 0 var(--border);
+    }
+    .nav-modal-body {
+      padding: 18px 20px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .nav-car-info-bar {
+      background: #F8FAFC;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-search-bar {
+      display: flex;
+      gap: 8px;
+    }
+    .nav-search-input {
+      flex: 1;
+      padding: 9px 12px;
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: var(--font-sans);
+      outline: none;
+      box-shadow: 2px 2px 0 0 var(--border);
+    }
+    .nav-search-input:focus {
+      border-color: var(--blue);
+    }
+    .nav-chips-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .nav-chip {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      box-shadow: 1px 1px 0 var(--border);
+      transition: transform 0.1s, background-color 0.1s;
+      user-select: none;
+    }
+    .nav-chip:hover {
+      background: var(--gold);
+      transform: translateY(-1px);
+    }
+    .nav-chip:active {
+      transform: translateY(1px);
+    }
+    .nav-chip-toggle-btn {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--blue);
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-decoration: underline;
+      padding: 0 4px;
+    }
+    .nav-chip-toggle-btn:hover {
+      color: var(--text);
+    }
+    .chip-badge-status {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 10px;
+      background: #F1F5F9;
+      color: var(--muted);
+      border: 1px solid #CBD5E1;
+      font-weight: 600;
+      margin-left: 4px;
+    }
+    .chip-badge-status.configured {
+      background: var(--green-light);
+      color: var(--green);
+      border-color: var(--green);
+    }
+    .nav-favorites-drawer {
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      background: #FFFBEB;
+      padding: 12px 14px;
+      box-shadow: 2px 2px 0 0 var(--border);
+      animation: navDrawerFadeIn 0.15s ease-out;
+    }
+    @keyframes navDrawerFadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .nav-fav-input-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .nav-fav-label {
+      font-size: 12px;
+      font-weight: 700;
+      width: 80px;
+      flex-shrink: 0;
+    }
+    .nav-fav-input {
+      flex: 1;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 12px;
+      background: var(--white);
+      outline: none;
+    }
+    .nav-fav-input:focus {
+      border-color: var(--blue);
+    }
+    .btn-sm {
+      padding: 4px 10px !important;
+      font-size: 11px !important;
+    }
+    .nav-status-banner {
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 12px;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      line-height: 1.5;
+    }
+    .nav-status-loading {
+      background: #EFF6FF;
+      border: 1px solid var(--blue);
+      color: #1E40AF;
+    }
+    .nav-status-warning {
+      background: #FFFBEB;
+      border: 1px solid #D97706;
+      color: #92400E;
+    }
+    .nav-status-error {
+      background: var(--red-light);
+      border: 1px solid var(--red);
+      color: var(--red);
+    }
+    .nav-status-engine-pill {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid currentColor;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .nav-candidates-box {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .nav-candidate-card {
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      background: var(--white);
+      box-shadow: 2px 2px 0 0 var(--border);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .nav-candidate-card:hover {
+      background: #FFFBEB;
+      transform: translateY(-1px);
+      box-shadow: 3px 3px 0 0 var(--border);
+    }
+    .nav-candidate-card.selected {
+      background: #FEF08A;
+      border-color: #000;
+      box-shadow: 3px 3px 0 0 var(--border);
+    }
+    .nav-candidate-radio {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      margin-top: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      background: var(--white);
+    }
+    .nav-candidate-card.selected .nav-candidate-radio::after {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border);
+    }
+    .nav-candidate-content {
+      flex: 1;
+      min-width: 0;
+    }
+    .nav-candidate-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .nav-candidate-name {
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .nav-candidate-distance {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 12px;
+      background: var(--green-light);
+      border: 1px solid var(--green);
+      color: var(--green);
+      white-space: nowrap;
+    }
+    .nav-candidate-address {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+      margin-bottom: 4px;
+    }
+    .nav-candidate-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+    .nav-candidate-fav-btn {
+      font-size: 10px;
+      padding: 1px 6px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: var(--white);
+      cursor: pointer;
+      font-family: var(--font-sans);
+    }
+    .nav-candidate-fav-btn:hover {
+      background: var(--gold);
+    }
+    #nav-preview-map {
+      height: 190px;
+      width: 100%;
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 2px 2px 0 0 var(--border);
+      background: #E2E8F0;
+    }
+    .nav-modal-footer {
+      padding: 12px 20px;
+      background: #FAFAFA;
+      border-top: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .nav-modal-selection-text {
+      font-size: 12px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+    .nav-modal-selection-name {
+      font-weight: 700;
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
@@ -792,7 +1166,10 @@
         <div class="hero-eyebrow">
           <span class="eyebrow-text">// TESSIE TELEMETRY & COMMAND PLATFORM · JAPAN</span>
         </div>
-        <h1>Moomin Y — 车辆核心指标监控看板</h1>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px;">
+          <h1 style="margin-bottom:0;">Moomin Y — 车辆核心指标监控看板</h1>
+          <button class="btn btn-primary" onclick="openNavModal()" style="font-weight:700;font-size:13px;padding:5px 14px;box-shadow:2px 2px 0 var(--border);border-radius:4px;cursor:pointer;">智能导航</button>
+        </div>
         <p class="hero-desc">
           本页面直连 Tessie REST API 与 Tesla Fleet Telemetry 实时 WebSocket 流数据。实时捕获动力电池包 SOC、充放电安培、高精度胎压传感器、座舱双区温控与驻车地理位置。
         </p>
@@ -1194,16 +1571,6 @@
         </div>
       </div>
 
-      <div class="control-card" id="card-nav">
-        <div class="card-action-spinner"></div>
-        <div class="control-card-title">🗺️ 目的地直推导航</div>
-        <div class="control-desc">输入目的地商户名或地址，直接下发到车机地图并开启路线规划。</div>
-        <div style="display:flex;gap:8px;margin-top:10px;">
-          <input type="text" id="nav-target" placeholder="输入目的地 (如: 名古屋市科学馆)..." class="native-input" />
-          <button class="btn btn-primary" onclick="sendNativeNav(this)">推送到车机</button>
-        </div>
-      </div>
-
       <div class="control-card" id="card-charging">
         <div class="card-action-spinner"></div>
         <div class="control-card-title">⚡ 充电上限调节</div>
@@ -1352,12 +1719,17 @@
     document.getElementById('target-temp-display').textContent = currentTargetTemp.toFixed(1) + '°C';
   }
 
+  let toastTimeoutId = null;
   function showToast(msg) {
     const t = document.getElementById('toast');
     if (t) {
       t.textContent = '⚡ ' + msg;
       t.style.display = 'block';
-      setTimeout(() => { t.style.display = 'none'; }, 3000);
+      if (toastTimeoutId) clearTimeout(toastTimeoutId);
+      toastTimeoutId = setTimeout(() => {
+        t.style.display = 'none';
+        toastTimeoutId = null;
+      }, 3200);
     }
   }
 
@@ -1506,14 +1878,508 @@
     }
   };
 
-  function sendNativeNav(btnEl = null) {
-    const dest = document.getElementById('nav-target').value.trim();
-    if (!dest) {
-      alert('请输入目的地');
+  // ── INTERACTIVE DESTINATION MODAL CONTROLLER ──
+  let navCandidates = [];
+  let selectedCandidateIndex = -1;
+  let navPreviewMap = null;
+  let navCarMarker = null;
+  let navDestMarker = null;
+  let navRouteLine = null;
+  let currentVehicleLoc = {
+    lat: 35.1548,
+    lng: 136.9894,
+    address: '',
+    savedLocation: ''
+  };
+
+  function openNavModal() {
+    const modalEl = document.getElementById('nav-interactive-modal');
+    if (!modalEl) return;
+    modalEl.classList.add('open');
+
+    // Update car pos summary in modal
+    const carPosEl = document.getElementById('nav-modal-car-pos');
+    if (carPosEl) {
+      if (currentVehicleLoc.lat && currentVehicleLoc.lng) {
+        const shortAddr = currentVehicleLoc.savedLocation || (currentVehicleLoc.address ? currentVehicleLoc.address.split(',')[0] : '');
+        carPosEl.textContent = `${currentVehicleLoc.lat.toFixed(4)}, ${currentVehicleLoc.lng.toFixed(4)} ${shortAddr ? '(' + shortAddr + ')' : ''}`;
+      } else {
+        carPosEl.textContent = '等待车辆 GPS 同步...';
+      }
+    }
+
+    // Refresh favorite chips and drawer values
+    updateFavoriteChipsUI();
+
+    // Auto focus search input
+    setTimeout(() => {
+      const inputEl = document.getElementById('nav-modal-query-input');
+      if (inputEl) inputEl.focus();
+      initNavPreviewMap();
+      if (navPreviewMap) navPreviewMap.invalidateSize();
+    }, 150);
+  }
+
+  function closeNavModal() {
+    const modalEl = document.getElementById('nav-interactive-modal');
+    if (modalEl) modalEl.classList.remove('open');
+  }
+
+  function handleNavBackdropClick(event) {
+    if (event.target && event.target.id === 'nav-interactive-modal') {
+      closeNavModal();
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const modalEl = document.getElementById('nav-interactive-modal');
+      if (modalEl && modalEl.classList.contains('open')) {
+        closeNavModal();
+      }
+    }
+  });
+
+  function initNavPreviewMap() {
+    if (navPreviewMap) return;
+    const mapEl = document.getElementById('nav-preview-map');
+    if (!mapEl) return;
+
+    try {
+      const initialLat = currentVehicleLoc.lat || 35.155;
+      const initialLng = currentVehicleLoc.lng || 136.99;
+      navPreviewMap = L.map('nav-preview-map', {
+        zoomControl: true,
+        attributionControl: false
+      }).setView([initialLat, initialLng], 13);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19
+      }).addTo(navPreviewMap);
+
+      // Add car marker
+      const carIcon = L.divIcon({
+        className: 'nav-map-car-icon',
+        html: '<div style="background:#2563EB;color:#fff;border:2px solid #000;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;box-shadow:2px 2px 0 #000;font-size:12px;">🚗</div>',
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
+      });
+      navCarMarker = L.marker([initialLat, initialLng], { icon: carIcon }).addTo(navPreviewMap)
+        .bindPopup('<b>当前车辆位置</b>');
+    } catch (e) {
+      console.error('Failed to init nav preview map:', e);
+    }
+  }
+
+  function handleNavSearch(queryOverride = null) {
+    const inputEl = document.getElementById('nav-modal-query-input');
+    const query = (queryOverride !== null ? queryOverride : (inputEl ? inputEl.value : '')).trim();
+
+    if (!query) {
+      showToast('请输入目的地名称或坐标');
       return;
     }
-    triggerNativeCmd('nav', { destination: dest }, btnEl);
-    showToast('已推送到车机大屏导航: ' + dest);
+    if (inputEl && queryOverride !== null) {
+      inputEl.value = query;
+    }
+
+    setNavModalStatus('loading', '✨ Vertex AI 正在解析地理语义、计算车辆拓扑与比对候选地...');
+    const searchBtn = document.getElementById('nav-modal-search-btn');
+    if (searchBtn) {
+      searchBtn.disabled = true;
+      searchBtn.textContent = '解算中...';
+    }
+
+    // Call native bridge
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.teslaNative) {
+      window.webkit.messageHandlers.teslaNative.postMessage({
+        action: 'resolve_destination',
+        params: {
+          query: query,
+          carLat: currentVehicleLoc.lat,
+          carLng: currentVehicleLoc.lng,
+          carAddress: currentVehicleLoc.address
+        }
+      });
+    } else {
+      // Mock simulation for browser preview without native WKWebView
+      setTimeout(() => {
+        window.onDestinationResolved({
+          success: true,
+          query: query,
+          engine: 'simulation_vertex_ai',
+          candidates: [
+            {
+              name: query + ' (模拟定位)',
+              address: '愛知県名古屋市中区錦3丁目',
+              lat: (currentVehicleLoc.lat || 35.155) + 0.012,
+              lng: (currentVehicleLoc.lng || 136.99) + 0.008,
+              distance_km: 1.8,
+              engine: 'simulation'
+            }
+          ]
+        });
+      }, 800);
+    }
+  }
+
+  function updateFavoriteChipsUI() {
+    const homeVal = localStorage.getItem('tesla_saved_home') || '';
+    const workVal = localStorage.getItem('tesla_saved_work') || '';
+
+    // Update Home Chip
+    const chipTextHome = document.getElementById('chip-text-home');
+    const chipBadgeHome = document.getElementById('chip-badge-home');
+    if (chipTextHome && chipBadgeHome) {
+      if (homeVal.trim()) {
+        const shortHome = homeVal.split(' ')[0] || homeVal;
+        chipTextHome.textContent = `🏠 自宅 (${shortHome})`;
+        chipBadgeHome.textContent = '已设置';
+        chipBadgeHome.classList.add('configured');
+      } else {
+        chipTextHome.textContent = '🏠 自宅 (未配置)';
+        chipBadgeHome.textContent = '未设置';
+        chipBadgeHome.classList.remove('configured');
+      }
+    }
+
+    // Update Work Chip
+    const chipTextWork = document.getElementById('chip-text-work');
+    const chipBadgeWork = document.getElementById('chip-badge-work');
+    if (chipTextWork && chipBadgeWork) {
+      if (workVal.trim()) {
+        const shortWork = workVal.split(' ')[0] || workVal;
+        chipTextWork.textContent = `🏢 公司 (${shortWork})`;
+        chipBadgeWork.textContent = '已设置';
+        chipBadgeWork.classList.add('configured');
+      } else {
+        chipTextWork.textContent = '🏢 常用公司 (未配置)';
+        chipBadgeWork.textContent = '未设置';
+        chipBadgeWork.classList.remove('configured');
+      }
+    }
+
+    // Sync input values in drawer if drawer exists
+    const inputHome = document.getElementById('fav-input-home');
+    const inputWork = document.getElementById('fav-input-work');
+    if (inputHome) inputHome.value = homeVal;
+    if (inputWork) inputWork.value = workVal;
+  }
+
+  function toggleFavoritesDrawer(forceState = null) {
+    const drawer = document.getElementById('nav-favorites-drawer');
+    const toggleBtn = document.getElementById('nav-fav-toggle-btn');
+    if (!drawer) return;
+
+    let willShow;
+    if (forceState !== null) {
+      willShow = forceState;
+    } else {
+      willShow = drawer.style.display === 'none';
+    }
+
+    drawer.style.display = willShow ? 'block' : 'none';
+    if (toggleBtn) {
+      toggleBtn.textContent = willShow ? '⚙️ 收起常用设置 ▴' : '⚙️ 常用地址设置 ▾';
+    }
+
+    if (willShow) {
+      updateFavoriteChipsUI();
+    }
+  }
+
+  function saveFavoritesFromDrawer() {
+    const homeInput = document.getElementById('fav-input-home');
+    const workInput = document.getElementById('fav-input-work');
+
+    const homeVal = homeInput ? homeInput.value.trim() : '';
+    const workVal = workInput ? workInput.value.trim() : '';
+
+    if (homeVal) {
+      localStorage.setItem('tesla_saved_home', homeVal);
+    } else {
+      localStorage.removeItem('tesla_saved_home');
+    }
+
+    if (workVal) {
+      localStorage.setItem('tesla_saved_work', workVal);
+    } else {
+      localStorage.removeItem('tesla_saved_work');
+    }
+
+    updateFavoriteChipsUI();
+    showToast('个人常驻地址已更新保存');
+    toggleFavoritesDrawer(false);
+  }
+
+  function clearFavoriteSlot(slot) {
+    if (slot === 'home') {
+      localStorage.removeItem('tesla_saved_home');
+      const input = document.getElementById('fav-input-home');
+      if (input) input.value = '';
+      showToast('已清空自宅地址');
+    } else if (slot === 'work') {
+      localStorage.removeItem('tesla_saved_work');
+      const input = document.getElementById('fav-input-work');
+      if (input) input.value = '';
+      showToast('已清空公司地址');
+    }
+    updateFavoriteChipsUI();
+  }
+
+  function handleQuickChip(type) {
+    if (type === 'home') {
+      const savedHome = localStorage.getItem('tesla_saved_home');
+      if (savedHome && savedHome.trim()) {
+        handleNavSearch(savedHome.trim());
+      } else {
+        toggleFavoritesDrawer(true);
+        const input = document.getElementById('fav-input-home');
+        if (input) input.focus();
+        showToast('尚未配置家庭地址，请在展开面板中输入');
+      }
+    } else if (type === 'work') {
+      const savedWork = localStorage.getItem('tesla_saved_work');
+      if (savedWork && savedWork.trim()) {
+        handleNavSearch(savedWork.trim());
+      } else {
+        toggleFavoritesDrawer(true);
+        const input = document.getElementById('fav-input-work');
+        if (input) input.focus();
+        showToast('尚未配置公司地址，请在展开面板中输入');
+      }
+    } else if (type === 'supercharger') {
+      handleNavSearch('离我最近的特斯拉超级充电站');
+    } else if (type === 'starbucks') {
+      handleNavSearch('离我最近的星巴克');
+    } else if (type === 'airport') {
+      handleNavSearch('中部国際空港');
+    }
+  }
+
+  function saveAsFavorite(index, type) {
+    if (!navCandidates || !navCandidates[index]) return;
+    const cand = navCandidates[index];
+    const key = type === 'home' ? 'tesla_saved_home' : 'tesla_saved_work';
+    const label = type === 'home' ? '家庭常驻地址' : '公司常驻地址';
+    const val = cand.name + ' (' + cand.address + ')';
+    localStorage.setItem(key, val);
+    updateFavoriteChipsUI();
+    showToast(`已将「${cand.name}」设为常用${label}`);
+  }
+
+  function setNavModalStatus(type, msg, engine = '', fallbackReason = '') {
+    const banner = document.getElementById('nav-modal-status-banner');
+    if (!banner) return;
+
+    if (!type) {
+      banner.style.display = 'none';
+      return;
+    }
+
+    banner.className = 'nav-status-banner';
+    banner.style.display = 'flex';
+
+    if (type === 'loading') {
+      banner.classList.add('nav-status-loading');
+      banner.innerHTML = `<span class="card-action-spinner" style="display:inline-block;width:14px;height:14px;border-width:2px;border-top-color:var(--blue);"></span><span>${msg}</span>`;
+    } else if (type === 'warning') {
+      banner.classList.add('nav-status-warning');
+      banner.innerHTML = `<span>⚠️ <b>OpenStreetMap 兜底</b>: ${fallbackReason || '主引擎未命中'}。请在上车前核对中控大屏。</span>`;
+    } else if (type === 'success') {
+      banner.classList.add('nav-status-loading');
+      banner.style.background = '#F0FDF4';
+      banner.style.borderColor = '#16A34A';
+      banner.style.color = '#15803D';
+      const engineName = engine.includes('vertex') ? 'Vertex AI (Gemini 3.8 Flash)' : (engine.includes('osm') || engine.includes('openstreetmap') ? 'OpenStreetMap Nominatim' : '直接坐标');
+      banner.innerHTML = `<span>⚡ 解算成功 · 引擎: <span class="nav-status-engine-pill">${engineName}</span></span>`;
+    } else if (type === 'error') {
+      banner.classList.add('nav-status-error');
+      banner.innerHTML = `<span>❌ ${msg}</span>`;
+    }
+  }
+
+  window.onDestinationResolved = function(result) {
+    const searchBtn = document.getElementById('nav-modal-search-btn');
+    if (searchBtn) {
+      searchBtn.disabled = false;
+      searchBtn.textContent = 'AI 语义解算';
+    }
+
+    if (!result || !result.success) {
+      setNavModalStatus('error', (result && result.error_message) || '未检索到有效目的地，请尝试补充地名或输入具体地址');
+      renderNavCandidates([]);
+      return;
+    }
+
+    if (result.is_fallback) {
+      setNavModalStatus('warning', '', result.engine, result.fallback_reason);
+    } else {
+      setNavModalStatus('success', '', result.engine);
+    }
+
+    navCandidates = result.candidates || [];
+    renderNavCandidates(navCandidates);
+
+    // Auto-select first candidate if present
+    if (navCandidates.length > 0) {
+      selectNavCandidate(0);
+    }
+  };
+
+  function renderNavCandidates(candidates) {
+    const container = document.getElementById('nav-modal-candidates-list');
+    if (!container) return;
+
+    if (!candidates || candidates.length === 0) {
+      container.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px 0;">暂无匹配候选地</div>';
+      updateNavSelectionSummary(null);
+      return;
+    }
+
+    let html = '';
+    candidates.forEach((cand, idx) => {
+      const distStr = cand.distance_km !== undefined && cand.distance_km !== null ? `距车 ${cand.distance_km} km` : '拓扑比对中';
+      html += `
+        <div class="nav-candidate-card ${idx === selectedCandidateIndex ? 'selected' : ''}" onclick="selectNavCandidate(${idx})">
+          <div class="nav-candidate-radio"></div>
+          <div class="nav-candidate-content">
+            <div class="nav-candidate-title-row">
+              <span class="nav-candidate-name" title="${cand.name}">${cand.name}</span>
+              <span class="nav-candidate-distance">${distStr}</span>
+            </div>
+            <div class="nav-candidate-address">${cand.address || '（无详细门牌地址）'}</div>
+            <div class="nav-candidate-footer">
+              <span>📍 ${Number(cand.lat).toFixed(5)}, ${Number(cand.lng).toFixed(5)}</span>
+              <div style="display:flex;gap:4px;" onclick="event.stopPropagation()">
+                <button class="nav-candidate-fav-btn" title="保存为家" onclick="saveAsFavorite(${idx}, 'home')">🏠 设为家</button>
+                <button class="nav-candidate-fav-btn" title="保存为公司" onclick="saveAsFavorite(${idx}, 'work')">🏢 设为公司</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    container.innerHTML = html;
+  }
+
+  function selectNavCandidate(index) {
+    selectedCandidateIndex = index;
+    const cards = document.querySelectorAll('.nav-candidate-card');
+    cards.forEach((c, i) => {
+      if (i === index) c.classList.add('selected');
+      else c.classList.remove('selected');
+    });
+
+    const cand = navCandidates[index];
+    updateNavSelectionSummary(cand);
+    updateNavPreviewMap(cand);
+
+    const pushBtn = document.getElementById('nav-modal-push-btn');
+    if (pushBtn) {
+      pushBtn.disabled = !cand;
+    }
+  }
+
+  function updateNavSelectionSummary(cand) {
+    const summaryEl = document.getElementById('nav-modal-selected-summary');
+    if (!summaryEl) return;
+    if (cand) {
+      summaryEl.innerHTML = `已选择: <span class="nav-modal-selection-name">${cand.name}</span> <span class="mono" style="font-size:11px;">(${Number(cand.lat).toFixed(4)}, ${Number(cand.lng).toFixed(4)})</span>`;
+    } else {
+      summaryEl.textContent = '请先输入并解算目的地';
+    }
+  }
+
+  function updateNavPreviewMap(cand) {
+    if (!navPreviewMap) initNavPreviewMap();
+    if (!navPreviewMap || !cand) return;
+
+    try {
+      const carLat = currentVehicleLoc.lat || 35.1548;
+      const carLng = currentVehicleLoc.lng || 136.9894;
+      const destLat = cand.lat;
+      const destLng = cand.lng;
+
+      // Update car marker
+      if (!navCarMarker) {
+        const carIcon = L.divIcon({
+          className: 'nav-map-car-icon',
+          html: '<div style="background:#2563EB;color:#fff;border:2px solid #000;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;box-shadow:2px 2px 0 #000;font-size:12px;">🚗</div>',
+          iconSize: [26, 26],
+          iconAnchor: [13, 13]
+        });
+        navCarMarker = L.marker([carLat, carLng], { icon: carIcon }).addTo(navPreviewMap);
+      } else {
+        navCarMarker.setLatLng([carLat, carLng]);
+      }
+
+      // Update dest marker
+      const destIcon = L.divIcon({
+        className: 'nav-map-dest-icon',
+        html: '<div style="background:#E11D48;color:#fff;border:2px solid #000;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;box-shadow:2px 2px 0 #000;font-size:12px;">🎯</div>',
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
+      });
+
+      if (!navDestMarker) {
+        navDestMarker = L.marker([destLat, destLng], { icon: destIcon }).addTo(navPreviewMap);
+      } else {
+        navDestMarker.setLatLng([destLat, destLng]);
+      }
+      navDestMarker.bindPopup(`<b>${cand.name}</b><br><span style="font-size:11px;color:#666;">${cand.address}</span>`);
+
+      // Update route dashed line
+      if (navRouteLine) {
+        navPreviewMap.removeLayer(navRouteLine);
+      }
+      navRouteLine = L.polyline([[carLat, carLng], [destLat, destLng]], {
+        color: '#E11D48',
+        weight: 3,
+        dashArray: '6, 8',
+        opacity: 0.85
+      }).addTo(navPreviewMap);
+
+      // Fit bounds
+      navPreviewMap.fitBounds([[carLat, carLng], [destLat, destLng]], {
+        padding: [30, 30],
+        maxZoom: 15
+      });
+      navPreviewMap.invalidateSize();
+    } catch (e) {
+      console.error('Failed to update nav preview map:', e);
+    }
+  }
+
+  function confirmAndPushNav(btnEl = null) {
+    if (selectedCandidateIndex < 0 || !navCandidates[selectedCandidateIndex]) {
+      showToast('请先选择一个候选目的地');
+      return;
+    }
+    const cand = navCandidates[selectedCandidateIndex];
+    if (btnEl) {
+      btnEl.disabled = true;
+      btnEl.innerHTML = '<span class="card-action-spinner" style="display:inline-block;width:12px;height:12px;margin-right:6px;"></span>正在下发车机中控...';
+    }
+
+    // Call native nav with exact validated coordinates!
+    triggerNativeCmd('nav', {
+      lat: cand.lat,
+      lng: cand.lng,
+      destination: `${cand.lat},${cand.lng}`,
+      name: cand.name
+    }, btnEl);
+
+    showToast(`正在推送到 Model Y 车机: ${cand.name}`);
+
+    // Listen for completion
+    setTimeout(() => {
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.innerHTML = '🚀 推送到车机中控';
+      }
+      closeNavModal();
+    }, 1800);
   }
 
   function setChargeLimit(limit, btnEl = null) {
@@ -1540,6 +2406,7 @@
 
     // 1. Location & GPS
     if (frame.address) {
+      currentVehicleLoc.address = frame.address;
       const addrEl = document.getElementById('gps-address');
       if (addrEl) addrEl.textContent = frame.address;
 
@@ -1550,6 +2417,19 @@
       }
     }
     if (frame.latitude !== undefined && frame.longitude !== undefined) {
+      currentVehicleLoc.lat = Number(frame.latitude);
+      currentVehicleLoc.lng = Number(frame.longitude);
+
+      const ctrlNavLoc = document.getElementById('ctrl-nav-current-loc');
+      if (ctrlNavLoc) {
+        ctrlNavLoc.textContent = `${currentVehicleLoc.lat.toFixed(4)}, ${currentVehicleLoc.lng.toFixed(4)}`;
+      }
+      const carPosEl = document.getElementById('nav-modal-car-pos');
+      if (carPosEl) {
+        const shortAddr = currentVehicleLoc.savedLocation || (currentVehicleLoc.address ? currentVehicleLoc.address.split(',')[0] : '');
+        carPosEl.textContent = `${currentVehicleLoc.lat.toFixed(4)}, ${currentVehicleLoc.lng.toFixed(4)} ${shortAddr ? '(' + shortAddr + ')' : ''}`;
+      }
+
       const coordsEl = document.getElementById('gps-coords');
       if (coordsEl) coordsEl.textContent = '纬度 (Lat): ' + Number(frame.latitude).toFixed(6) + ' | 经度 (Lng): ' + Number(frame.longitude).toFixed(6);
 
@@ -1561,6 +2441,7 @@
       }
     }
     if (frame.saved_location !== undefined) {
+      currentVehicleLoc.savedLocation = frame.saved_location;
       const savedLocEl = document.getElementById('gps-saved-location');
       if (savedLocEl) {
         savedLocEl.textContent = '已保存位置: ' + (frame.saved_location ? frame.saved_location : '未命名地点 (行驶/临时驻车)');
@@ -2312,6 +3193,140 @@
     chartDrives.resize();
   });
 </script>
+
+<!-- ═══════════════════════ INTERACTIVE DESTINATION MODAL ═══════════════════════ -->
+<div id="nav-interactive-modal" class="nav-modal-backdrop" onclick="handleNavBackdropClick(event)">
+  <div class="nav-modal-container" onclick="event.stopPropagation()">
+    <!-- Header -->
+    <div class="nav-modal-header">
+      <div class="nav-modal-title">
+        <span>🗺️</span>
+        <span>智能目的地导航直推</span>
+        <span style="font-family:var(--font-mono);font-size:11px;background:#fff;border:1px solid #000;border-radius:3px;padding:1px 6px;margin-left:6px;font-weight:600;">AI DUAL-ENGINE</span>
+      </div>
+      <button class="nav-modal-close" onclick="closeNavModal()" title="关闭 (Esc)">✕</button>
+    </div>
+
+    <!-- Body -->
+    <div class="nav-modal-body">
+      <!-- Vehicle position bar -->
+      <div class="nav-car-info-bar">
+        <div style="display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          <span>📍 车辆起点:</span>
+          <span id="nav-modal-car-pos" class="mono" style="font-weight:700;color:var(--text);">35.1548, 136.9894</span>
+        </div>
+        <div style="font-size:11px;color:var(--green);font-weight:700;white-space:nowrap;">
+          ⚡ 拓扑优选已就绪
+        </div>
+      </div>
+
+      <!-- Search input -->
+      <div class="nav-search-bar">
+        <input
+          type="text"
+          id="nav-modal-query-input"
+          class="nav-search-input"
+          placeholder="输入商户名、景点或地址 (如: 名古屋荣站附近的星巴克, 中部国际机场)..."
+          onkeydown="if(event.key==='Enter') handleNavSearch();"
+        />
+        <button id="nav-modal-search-btn" class="btn btn-primary" onclick="handleNavSearch()" style="padding:0 16px;font-size:13px;font-weight:700;white-space:nowrap;">
+          🔍 AI 语义解算
+        </button>
+      </div>
+
+      <!-- Row 1: Fixed Public AI Semantic Queries -->
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">
+          🌐 常用公共场景 (AI 拓扑即时解算):
+        </div>
+        <div class="nav-chips-container">
+          <div class="nav-chip" onclick="handleQuickChip('supercharger')">⚡ 附近特斯拉超充</div>
+          <div class="nav-chip" onclick="handleQuickChip('starbucks')">☕ 附近星巴克</div>
+          <div class="nav-chip" onclick="handleQuickChip('airport')">✈️ 中部国际机场</div>
+        </div>
+      </div>
+
+      <!-- Row 2: Personal Configured Favorites (Home / Work / Custom) -->
+      <div style="display:flex;flex-direction:column;gap:5px;margin-top:2px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">
+            📍 个人常驻地址 (需设定，点击直达):
+          </span>
+          <button class="nav-chip-toggle-btn" onclick="toggleFavoritesDrawer()" id="nav-fav-toggle-btn">
+            ⚙️ 常用地址设置 ▾
+          </button>
+        </div>
+        <div class="nav-chips-container">
+          <div class="nav-chip" id="chip-fav-home" onclick="handleQuickChip('home')">
+            <span id="chip-text-home">🏠 自宅 (回家)</span>
+            <span class="chip-badge-status" id="chip-badge-home">未设置</span>
+          </div>
+          <div class="nav-chip" id="chip-fav-work" onclick="handleQuickChip('work')">
+            <span id="chip-text-work">🏢 常用公司</span>
+            <span class="chip-badge-status" id="chip-badge-work">未设置</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inline Drawer: Favorites Settings Panel -->
+      <div id="nav-favorites-drawer" class="nav-favorites-drawer" style="display:none;">
+        <div style="font-weight:700;font-size:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
+          <span>⚙️ 个人常驻地址配置 (保存在本地设备)</span>
+          <span style="font-size:11px;color:var(--muted);font-weight:normal;">也可在候选地卡片点击「设为家/公司」一键绑定</span>
+        </div>
+        <div class="nav-fav-input-row">
+          <span class="nav-fav-label">🏠 自宅地址:</span>
+          <input type="text" id="fav-input-home" class="nav-fav-input" placeholder="输入家庭地址或商圈小区 (如: 愛知県名古屋市名東区...)" />
+          <button class="btn btn-sm" onclick="clearFavoriteSlot('home')">清空</button>
+        </div>
+        <div class="nav-fav-input-row">
+          <span class="nav-fav-label">🏢 公司地址:</span>
+          <input type="text" id="fav-input-work" class="nav-fav-input" placeholder="输入公司大楼或详细门牌 (如: 名古屋市中区栄3丁目...)" />
+          <button class="btn btn-sm" onclick="clearFavoriteSlot('work')">清空</button>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+          <button class="btn btn-sm" onclick="toggleFavoritesDrawer(false)">收起</button>
+          <button class="btn btn-primary btn-sm" onclick="saveFavoritesFromDrawer()">💾 保存设置</button>
+        </div>
+      </div>
+
+      <!-- Status banner -->
+      <div id="nav-modal-status-banner" class="nav-status-banner"></div>
+
+      <!-- Candidates selection list -->
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">
+        🎯 候选目的地列表 (点击单选确认)
+      </div>
+      <div id="nav-modal-candidates-list" class="nav-candidates-box">
+        <div style="font-size:12px;color:var(--muted);text-align:center;padding:16px 0;background:#F8FAFC;border:1px dashed var(--border);border-radius:6px;">
+          请输入目的地或点击上方预设，AI 将自动解算精确门牌与 GPS 坐标
+        </div>
+      </div>
+
+      <!-- Mini-map preview -->
+      <div style="margin-top:2px;">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">
+          <span>🗺️ 路线与落点预览</span>
+          <span style="font-size:10px;font-weight:400;color:var(--muted);">车辆起点 🚗 ─── 目标点 🎯</span>
+        </div>
+        <div id="nav-preview-map"></div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="nav-modal-footer">
+      <div class="nav-modal-selection-text">
+        <span id="nav-modal-selected-summary">请先输入并解算目的地</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn" onclick="closeNavModal()">取消</button>
+        <button id="nav-modal-push-btn" class="btn btn-primary" onclick="confirmAndPushNav(this)" disabled style="font-weight:700;">
+          🚀 推送到车机中控
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>

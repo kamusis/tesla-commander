@@ -104,11 +104,13 @@ public final class TessieClient {
             }
         case "nav":
             endpoint = "/\(activeVin)/command/share"
-            if let dest = params["destination"] as? String {
+            if let lat = params["lat"] as? Double, let lng = params["lng"] as? Double {
+                queryParams["value"] = String(format: "%.6f,%.6f", lat, lng)
+            } else if let dest = params["destination"] as? String {
                 queryParams["value"] = dest
-                queryParams["locale"] = "ja-JP"
-                queryParams["wait_for_completion"] = "true"
             }
+            queryParams["locale"] = "ja-JP"
+            queryParams["wait_for_completion"] = "true"
         case "set_charge_limit":
             endpoint = "/\(activeVin)/command/set_charge_limit"
             if let limit = params["limit"] as? Int {
