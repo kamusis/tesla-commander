@@ -740,6 +740,68 @@
       font-size: 12px !important;
     }
 
+    /* ── LIVE VEHICLE TRACKING ── */
+    .live-car-marker {
+      background: transparent !important;
+      border: none !important;
+    }
+    .car-marker-container {
+      position: relative;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .car-marker-pulse {
+      position: absolute;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(225, 29, 72, 0.4);
+      animation: car-pulse-anim 1.8s infinite ease-out;
+    }
+    @keyframes car-pulse-anim {
+      0% { transform: scale(0.7); opacity: 0.9; }
+      100% { transform: scale(2.4); opacity: 0; }
+    }
+    .car-marker-icon {
+      position: relative;
+      z-index: 2;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #E11D48;
+      border: 2px solid #FFFFFF;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.25s ease-out;
+    }
+    .car-marker-icon svg {
+      width: 14px;
+      height: 14px;
+      fill: #FFFFFF;
+    }
+
+    .drive-card-item.live-trip-card {
+      border: 2px solid var(--red) !important;
+      background: rgba(225, 29, 72, 0.05) !important;
+      box-shadow: 2px 2px 0 0 var(--red) !important;
+      position: relative;
+      overflow: hidden;
+    }
+    .drive-card-item.live-trip-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--red);
+    }
+
     /* Responsive */
     @media (max-width: 1024px) {
       .hero { grid-template-columns: 1fr; }
@@ -948,7 +1010,10 @@
           <span id="gps-coords">纬度 (Lat): -- | 经度 (Lng): --</span><br/>
           <span id="gps-saved-location">已保存位置: --</span>
         </div>
-        <a id="gps-maps-link" href="#" target="_blank" class="btn btn-primary" onclick="openGoogleMaps(event)">在 Google Maps 查看位置 ↗</a>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <a id="gps-maps-link" href="#" target="_blank" class="btn btn-primary" onclick="openGoogleMaps(event)">在 Google Maps 查看位置 ↗</a>
+          <button id="gps-live-track-btn" class="btn" style="display:none;background:var(--gold);font-weight:700;" onclick="switchTab('drives'); selectLiveTrip();">🚗 实时路线跟踪 ↗</button>
+        </div>
       </div>
 
       <div class="hero-card">
@@ -1302,6 +1367,7 @@
               <span id="map-drive-tag" class="header-badge" style="background:#E2E8F0;">未选定</span>
             </div>
             <div style="display:flex;gap:8px;">
+              <button id="btn-live-follow" class="btn" style="display:none;padding:4px 10px;font-size:12px;background:var(--gold);font-weight:700;" onclick="toggleLiveFollow()">🎯 视角跟随: 开</button>
               <button class="btn" style="padding:4px 10px;font-size:12px;" onclick="centerCurrentRoute()">⌖ 居中路线</button>
             </div>
           </div>
@@ -1785,6 +1851,11 @@
       window.lastUpdatedStr = frame.last_updated;
       updateRelativeTimeBadge();
     }
+
+    // 11. Live Trip GPS Tracker
+    if (typeof LiveTripTracker !== 'undefined' && LiveTripTracker.onFrame) {
+      LiveTripTracker.onFrame(frame);
+    }
   };
 
   window.lastUpdatedEpoch = Date.now();
@@ -1823,7 +1894,10 @@
   function switchTab(tabId, el) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    el.classList.add('active');
+    if (!el) {
+      el = document.querySelector(`.tab[onclick*="'${tabId}'"]`);
+    }
+    if (el) el.classList.add('active');
     const target = document.getElementById('tab-' + tabId);
     if (target) target.classList.add('active');
     window.dispatchEvent(new Event('resize'));
@@ -1833,7 +1907,9 @@
         initDrivesMap();
         if (drivesMap) {
           drivesMap.invalidateSize();
-          if (currentDrivePolyline) {
+          if (isLiveTripSelected && livePolyline && LiveTripTracker.points.length > 0) {
+            centerCurrentRoute();
+          } else if (currentDrivePolyline) {
             drivesMap.fitBounds(currentDrivePolyline.getBounds(), { padding: [50, 50] });
           }
         }
@@ -1841,7 +1917,7 @@
     }
   }
 
-  // ─── TAB 05 DRIVES & ROUTES LOGIC ───
+  // ─── TAB 02 DRIVES & REAL-TIME ROUTES LOGIC ───
   let drivesMap = null;
   let currentDrivePolyline = null;
   let startMarker = null;
@@ -1849,6 +1925,192 @@
   let selectedDriveId = null;
   let allDrivesData = [];
   const drivingPathsCache = {};
+
+  // Live Real-Time Drive Tracking State
+  let livePolyline = null;
+  let liveStartMarker = null;
+  let liveVehicleMarker = null;
+  let isLiveTripSelected = false;
+
+  function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
+    const r = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function createCarMarkerIcon(heading) {
+    return L.divIcon({
+      className: 'live-car-marker',
+      html: `
+        <div class="car-marker-container">
+          <div class="car-marker-pulse"></div>
+          <div class="car-marker-icon" style="transform: rotate(${heading || 0}deg);">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 2L19 21L12 17L5 21L12 2Z"/>
+            </svg>
+          </div>
+        </div>
+      `,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+  }
+
+  const LiveTripTracker = {
+    isActive: false,
+    startTime: null,
+    startOdo: 0,
+    startSoc: null,
+    startLat: null,
+    startLng: null,
+    startAddress: '',
+    currentAddress: '',
+    currentSpeed: 0,
+    currentSoc: null,
+    currentDistanceKm: 0,
+    heading: 0,
+    lastLat: null,
+    lastLng: null,
+    lastOdo: 0,
+    points: [],
+    followView: true,
+    settleTimer: null,
+
+    onFrame(frame) {
+      const shift = frame.shift_state;
+      const speed = (frame.speed !== undefined && frame.speed !== null) ? Number(frame.speed) : 0;
+      const lat = (frame.latitude !== undefined && frame.latitude !== null) ? Number(frame.latitude) : null;
+      const lng = (frame.longitude !== undefined && frame.longitude !== null) ? Number(frame.longitude) : null;
+      const heading = (frame.heading !== undefined && frame.heading !== null) ? Number(frame.heading) : 0;
+      const odo = (frame.odometer !== undefined && frame.odometer !== null) ? Number(frame.odometer) : 0;
+      const soc = (frame.battery_level !== undefined && frame.battery_level !== null) ? Math.round(Number(frame.battery_level)) : null;
+      const address = frame.saved_location || (frame.address ? frame.address.split(',')[0] : '') || '';
+
+      if (soc !== null) this.currentSoc = soc;
+      this.currentSpeed = Math.round(speed);
+      this.heading = Math.round(heading);
+      if (address) this.currentAddress = address;
+
+      const isDriving = (shift === 'D' || shift === 'R' || speed > 1);
+
+      if (isDriving && lat && lng) {
+        if (this.settleTimer) {
+          clearTimeout(this.settleTimer);
+          this.settleTimer = null;
+        }
+
+        if (!this.isActive) {
+          this.startTrip(lat, lng, heading, odo, soc, address);
+        } else {
+          this.appendPoint(lat, lng, heading, odo, speed);
+        }
+      } else if (shift === 'P' || (!isDriving && speed <= 0)) {
+        if (this.isActive && !this.settleTimer) {
+          this.settleTimer = setTimeout(() => {
+            this.finalizeTrip();
+          }, 30000);
+        }
+      }
+
+      this.updateTab01Button();
+    },
+
+    startTrip(lat, lng, heading, odo, soc, address) {
+      this.isActive = true;
+      this.startTime = new Date();
+      this.startOdo = odo || 0;
+      this.lastOdo = this.startOdo;
+      this.startSoc = soc;
+      this.startLat = lat;
+      this.startLng = lng;
+      this.startAddress = address || '起点位置';
+      this.lastLat = lat;
+      this.lastLng = lng;
+      this.points = [[lat, lng]];
+      this.currentDistanceKm = 0;
+      this.followView = true;
+
+      renderLiveTripCard();
+      initLiveMapLayers(lat, lng, heading);
+      this.updateTab01Button();
+
+      const drivesTabActive = document.getElementById('tab-drives')?.classList.contains('active');
+      if (drivesTabActive && !selectedDriveId) {
+        selectLiveTrip();
+      }
+    },
+
+    appendPoint(lat, lng, heading, odo, speed) {
+      const dist = haversineDistanceMeters(this.lastLat, this.lastLng, lat, lng);
+
+      // Deadband / drift filter: skip tiny jitter when stopped
+      if (dist < 3.5 && speed <= 1.5) {
+        updateLiveVehicleMarker(lat, lng, heading);
+        return;
+      }
+
+      this.points.push([lat, lng]);
+      this.lastLat = lat;
+      this.lastLng = lng;
+
+      if (odo > this.startOdo && this.startOdo > 0) {
+        this.currentDistanceKm = Math.max(this.currentDistanceKm, odo - this.startOdo);
+      } else {
+        this.currentDistanceKm += (dist / 1000.0);
+      }
+      if (odo > 0) this.lastOdo = odo;
+
+      updateLiveTripUI();
+      addPointToLiveMap(lat, lng, heading, this.followView);
+    },
+
+    finalizeTrip() {
+      this.isActive = false;
+      this.settleTimer = null;
+      this.updateTab01Button();
+
+      const liveCard = document.getElementById('live-trip-card');
+      if (liveCard) {
+        const badge = liveCard.querySelector('.live-badge-status');
+        if (badge) {
+          badge.innerHTML = '🏁 已到达 · 待归档';
+          badge.style.color = 'var(--text)';
+        }
+      }
+
+      if (typeof triggerNativeCmd === 'function') {
+        setTimeout(() => {
+          triggerNativeCmd('refresh');
+        }, 5000);
+      }
+    },
+
+    getDurationMin() {
+      if (!this.startTime) return 0;
+      return Math.max(1, Math.round((new Date() - this.startTime) / 60000));
+    },
+
+    getAvgSpeed() {
+      const min = this.getDurationMin();
+      if (min <= 0 || this.currentDistanceKm <= 0) return this.currentSpeed;
+      return Math.round((this.currentDistanceKm / min) * 60);
+    },
+
+    updateTab01Button() {
+      const btn = document.getElementById('gps-live-track-btn');
+      if (!btn) return;
+      if (this.isActive) {
+        btn.style.display = 'inline-flex';
+        btn.innerHTML = `<span class="status-dot" style="background:var(--red);margin-right:6px;"></span> 🚗 跟踪行驶路线 (${this.currentDistanceKm.toFixed(1)} km) ↗`;
+      } else {
+        btn.style.display = 'none';
+      }
+    }
+  };
 
   function initDrivesMap() {
     if (drivesMap) return;
@@ -1865,8 +2127,234 @@
         maxZoom: 19,
         subdomains: ['a', 'b', 'c']
       }).addTo(drivesMap);
+
+      drivesMap.on('dragstart', () => {
+        if (isLiveTripSelected && LiveTripTracker.followView) {
+          LiveTripTracker.followView = false;
+          const btnFollow = document.getElementById('btn-live-follow');
+          if (btnFollow) {
+            btnFollow.textContent = '🎯 视角跟随: 关';
+            btnFollow.style.background = 'var(--bg)';
+          }
+        }
+      });
     } catch (e) {
       console.error("Leaflet init error:", e);
+    }
+  }
+
+  function initLiveMapLayers(startLat, startLng, heading) {
+    if (!drivesMap) initDrivesMap();
+    if (!drivesMap) return;
+
+    if (livePolyline && drivesMap.hasLayer(livePolyline)) drivesMap.removeLayer(livePolyline);
+    if (liveStartMarker && drivesMap.hasLayer(liveStartMarker)) drivesMap.removeLayer(liveStartMarker);
+    if (liveVehicleMarker && drivesMap.hasLayer(liveVehicleMarker)) drivesMap.removeLayer(liveVehicleMarker);
+
+    livePolyline = L.polyline([[startLat, startLng]], {
+      color: '#E11D48',
+      weight: 5,
+      opacity: 0.9,
+      lineJoin: 'round'
+    });
+
+    liveStartMarker = L.circleMarker([startLat, startLng], {
+      radius: 7,
+      fillColor: '#16A34A',
+      color: '#000000',
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 1
+    }).bindPopup(`<b>实时起点</b><br>${LiveTripTracker.startAddress}`);
+
+    liveVehicleMarker = L.marker([startLat, startLng], {
+      icon: createCarMarkerIcon(heading),
+      zIndexOffset: 1000
+    }).bindPopup("<b>Model Y (当前行驶位置)</b>");
+
+    if (isLiveTripSelected) {
+      livePolyline.addTo(drivesMap);
+      liveStartMarker.addTo(drivesMap);
+      liveVehicleMarker.addTo(drivesMap);
+      drivesMap.setView([startLat, startLng], 15);
+    }
+  }
+
+  function updateLiveVehicleMarker(lat, lng, heading) {
+    if (!liveVehicleMarker) return;
+    liveVehicleMarker.setLatLng([lat, lng]);
+    liveVehicleMarker.setIcon(createCarMarkerIcon(heading));
+  }
+
+  function addPointToLiveMap(lat, lng, heading, follow) {
+    if (!drivesMap) return;
+    if (livePolyline) {
+      livePolyline.addLatLng([lat, lng]);
+    }
+    updateLiveVehicleMarker(lat, lng, heading);
+
+    if (isLiveTripSelected && follow) {
+      drivesMap.panTo([lat, lng], { animate: true, duration: 0.5 });
+    }
+  }
+
+  function renderLiveTripCard() {
+    const listEl = document.getElementById('drives-list');
+    if (!listEl) return;
+
+    let liveCard = document.getElementById('live-trip-card');
+    if (!liveCard) {
+      liveCard = document.createElement('div');
+      liveCard.id = 'live-trip-card';
+      listEl.insertBefore(liveCard, listEl.firstChild);
+    }
+
+    const isActive = isLiveTripSelected;
+    liveCard.className = `drive-card-item live-trip-card ${isActive ? 'active' : ''}`;
+    liveCard.onclick = () => selectLiveTrip();
+
+    const statusText = LiveTripTracker.isActive ? 'LIVE 实时行程' : '已到达 (待归档)';
+    const statusColor = LiveTripTracker.isActive ? 'var(--red)' : 'var(--text)';
+    const ptsCount = LiveTripTracker.points.length;
+
+    liveCard.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span class="live-badge-status" style="font-family:var(--font-mono);font-size:11px;font-weight:800;color:${statusColor};display:flex;align-items:center;gap:6px;">
+          ${LiveTripTracker.isActive ? '<span class="status-dot" style="background:var(--red);"></span>' : '🏁'} ${statusText}
+        </span>
+        <span id="live-trip-dist-val" style="font-family:var(--font-mono);font-size:14px;font-weight:800;color:var(--red);">${LiveTripTracker.currentDistanceKm.toFixed(1)} km</span>
+      </div>
+      <div style="font-size:12px;font-weight:600;margin:6px 0;line-height:1.4;color:var(--text);">
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${LiveTripTracker.startAddress}">🚩 ${LiveTripTracker.startAddress}</div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;color:var(--blue);" id="live-trip-current-status">🚗 时速 ${LiveTripTracker.currentSpeed} km/h · 航向 ${LiveTripTracker.heading}°</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);font-family:var(--font-mono);border-top:1px dashed rgba(225,29,72,0.25);padding-top:6px;margin-top:6px;">
+        <span id="live-trip-dur-val">已耗时 ~${LiveTripTracker.getDurationMin()} 分钟</span>
+        <span id="live-trip-pts-count">GPS打点: ${ptsCount} 个</span>
+      </div>
+    `;
+  }
+
+  function updateLiveTripUI() {
+    renderLiveTripCard();
+    if (isLiveTripSelected) {
+      updateLiveMetricsDisplay();
+
+      const tagEl = document.getElementById('map-drive-tag');
+      if (tagEl) {
+        tagEl.textContent = `[LIVE 🔴 实时行程] ${LiveTripTracker.currentDistanceKm.toFixed(1)} km · 正在行驶`;
+        tagEl.style.background = '#FEE2E2';
+        tagEl.style.color = '#991B1B';
+      }
+    }
+  }
+
+  function selectLiveTrip() {
+    isLiveTripSelected = true;
+    selectedDriveId = 'live';
+
+    document.querySelectorAll('.drive-card-item').forEach(el => el.classList.remove('active'));
+    const liveCard = document.getElementById('live-trip-card');
+    if (liveCard) liveCard.classList.add('active');
+
+    const tagEl = document.getElementById('map-drive-tag');
+    if (tagEl) {
+      tagEl.textContent = `[LIVE 🔴 实时行程] ${LiveTripTracker.currentDistanceKm.toFixed(1)} km · 正在行驶`;
+      tagEl.style.background = '#FEE2E2';
+      tagEl.style.color = '#991B1B';
+    }
+
+    const btnFollow = document.getElementById('btn-live-follow');
+    if (btnFollow) {
+      btnFollow.style.display = 'inline-flex';
+      btnFollow.textContent = LiveTripTracker.followView ? '🎯 视角跟随: 开' : '🎯 视角跟随: 关';
+      btnFollow.style.background = LiveTripTracker.followView ? 'var(--gold)' : 'var(--bg)';
+    }
+
+    if (currentDrivePolyline && drivesMap) {
+      drivesMap.removeLayer(currentDrivePolyline);
+      currentDrivePolyline = null;
+    }
+    if (startMarker && drivesMap) {
+      drivesMap.removeLayer(startMarker);
+      startMarker = null;
+    }
+    if (endMarker && drivesMap) {
+      drivesMap.removeLayer(endMarker);
+      endMarker = null;
+    }
+
+    const overlay = document.getElementById('map-status-overlay');
+    if (overlay) overlay.style.display = 'none';
+
+    initDrivesMap();
+    if (drivesMap) {
+      drivesMap.invalidateSize();
+      if (livePolyline && !drivesMap.hasLayer(livePolyline)) livePolyline.addTo(drivesMap);
+      if (liveStartMarker && !drivesMap.hasLayer(liveStartMarker)) liveStartMarker.addTo(drivesMap);
+      if (liveVehicleMarker && !drivesMap.hasLayer(liveVehicleMarker)) liveVehicleMarker.addTo(drivesMap);
+
+      if (LiveTripTracker.lastLat && LiveTripTracker.lastLng) {
+        if (LiveTripTracker.points.length > 1 && livePolyline) {
+          drivesMap.fitBounds(livePolyline.getBounds(), { padding: [50, 50] });
+        } else {
+          drivesMap.setView([LiveTripTracker.lastLat, LiveTripTracker.lastLng], 15);
+        }
+      }
+    }
+
+    updateLiveMetricsDisplay();
+  }
+
+  function toggleLiveFollow() {
+    LiveTripTracker.followView = !LiveTripTracker.followView;
+    const btnFollow = document.getElementById('btn-live-follow');
+    if (btnFollow) {
+      btnFollow.textContent = LiveTripTracker.followView ? '🎯 视角跟随: 开' : '🎯 视角跟随: 关';
+      btnFollow.style.background = LiveTripTracker.followView ? 'var(--gold)' : 'var(--bg)';
+    }
+    if (LiveTripTracker.followView && drivesMap && LiveTripTracker.lastLat && LiveTripTracker.lastLng) {
+      drivesMap.panTo([LiveTripTracker.lastLat, LiveTripTracker.lastLng], { animate: true });
+    }
+  }
+
+  function updateLiveMetricsDisplay() {
+    const durBadge = document.getElementById('metric-duration-badge');
+    if (durBadge) {
+      durBadge.textContent = `已行驶 ~${LiveTripTracker.getDurationMin()} 分钟`;
+    }
+
+    const mAddr = document.getElementById('metric-addresses');
+    if (mAddr) {
+      const startT = LiveTripTracker.startTime ? LiveTripTracker.startTime.toTimeString().substring(0, 8) : '--';
+      mAddr.innerHTML = `
+        <div style="display:flex;align-items:baseline;gap:6px;line-height:1.5;">
+          <span style="color:var(--green);font-weight:800;font-family:var(--font-mono);background:rgba(16,185,129,0.12);padding:1px 5px;border-radius:2px;font-size:11px;white-space:nowrap;">起 ${startT}</span>
+          <span style="word-break:break-all;">${LiveTripTracker.startAddress}</span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:6px;line-height:1.5;margin-top:5px;">
+          <span style="color:var(--red);font-weight:800;font-family:var(--font-mono);background:rgba(239,68,68,0.12);padding:1px 5px;border-radius:2px;font-size:11px;white-space:nowrap;">现 实时位置</span>
+          <span style="word-break:break-all;">${LiveTripTracker.currentAddress || '道路行驶中'}</span>
+        </div>
+      `;
+    }
+
+    const mSpeed = document.getElementById('metric-speed');
+    if (mSpeed) {
+      mSpeed.textContent = `${LiveTripTracker.currentSpeed} / ${LiveTripTracker.getAvgSpeed()} km/h`;
+    }
+
+    const mBat = document.getElementById('metric-battery');
+    const mBatSub = document.getElementById('metric-battery-sub');
+    if (mBat) {
+      const startSocStr = LiveTripTracker.startSoc !== null ? `${LiveTripTracker.startSoc}%` : '--%';
+      const curSocStr = LiveTripTracker.currentSoc !== null ? `${LiveTripTracker.currentSoc}%` : '--%';
+      mBat.textContent = `${startSocStr} → ${curSocStr}`;
+    }
+    if (mBatSub) {
+      const drop = (LiveTripTracker.startSoc !== null && LiveTripTracker.currentSoc !== null)
+        ? (LiveTripTracker.startSoc - LiveTripTracker.currentSoc) : 0;
+      mBatSub.textContent = `实时消耗 ${drop > 0 ? drop : 0}% · (已行驶 ${LiveTripTracker.currentDistanceKm.toFixed(1)} km)`;
     }
   }
 
@@ -1899,14 +2387,14 @@
     const listEl = document.getElementById('drives-list');
     if (!listEl) return;
 
-    if (allDrivesData.length === 0) {
+    if (allDrivesData.length === 0 && !LiveTripTracker.isActive) {
       listEl.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);">暂无已归档的行程记录</div>';
       return;
     }
 
     let html = '';
     allDrivesData.forEach(d => {
-      const isActive = d.id === selectedDriveId;
+      const isActive = (!isLiveTripSelected && d.id === selectedDriveId);
       const isSynthetic = d.is_synthetic === true;
       const energyStr = isSynthetic
         ? '离线推算'
@@ -1941,14 +2429,32 @@
     });
     listEl.innerHTML = html;
 
+    if (LiveTripTracker.isActive) {
+      renderLiveTripCard();
+    }
+
     // Auto-select first drive if none selected or previous selected is not in list
-    if (allDrivesData.length > 0 && (!selectedDriveId || !allDrivesData.some(d => d.id === selectedDriveId))) {
-      selectDrive(allDrivesData[0].id);
+    if (!isLiveTripSelected) {
+      if (allDrivesData.length > 0 && (!selectedDriveId || !allDrivesData.some(d => d.id === selectedDriveId))) {
+        selectDrive(allDrivesData[0].id);
+      }
     }
   }
 
   function selectDrive(driveId) {
+    isLiveTripSelected = false;
     selectedDriveId = driveId;
+
+    const btnFollow = document.getElementById('btn-live-follow');
+    if (btnFollow) btnFollow.style.display = 'none';
+
+    // Remove live layers from map if present
+    if (drivesMap) {
+      if (livePolyline && drivesMap.hasLayer(livePolyline)) drivesMap.removeLayer(livePolyline);
+      if (liveStartMarker && drivesMap.hasLayer(liveStartMarker)) drivesMap.removeLayer(liveStartMarker);
+      if (liveVehicleMarker && drivesMap.hasLayer(liveVehicleMarker)) drivesMap.removeLayer(liveVehicleMarker);
+    }
+
     const drive = allDrivesData.find(d => d.id === driveId);
     if (!drive) return;
 
@@ -1963,9 +2469,11 @@
       if (drive.is_synthetic) {
         tagEl.textContent = `[推算补偿] ${drive.time_range || drive.date} · ${drive.distance_km} km`;
         tagEl.style.background = '#F59E0B';
+        tagEl.style.color = 'var(--text)';
       } else {
         tagEl.textContent = `${drive.time_range || drive.date} · ${drive.distance_km} km`;
         tagEl.style.background = 'var(--gold)';
+        tagEl.style.color = 'var(--text)';
       }
     }
 
@@ -2027,7 +2535,6 @@
       drivingPathsCache[driveId] = points;
       renderPathOnMap(points, drive);
     } else {
-      // Request native swift to fetch points
       const overlay = document.getElementById('map-status-overlay');
       const statusText = document.getElementById('map-status-text');
       if (overlay) overlay.style.display = 'flex';
@@ -2050,7 +2557,7 @@
     const overlay = document.getElementById('map-status-overlay');
     if (overlay) overlay.style.display = 'none';
 
-    if (selectedDriveId === driveId) {
+    if (selectedDriveId === driveId && !isLiveTripSelected) {
       const drive = allDrivesData.find(d => d.id === driveId);
       renderPathOnMap(drivingPathsCache[driveId], drive);
     }
@@ -2104,7 +2611,6 @@
 
     if (latLngs.length === 0) return;
 
-    // Draw high contrast polyline - dashed if synthetic
     const polylineOptions = (drive && drive.is_synthetic) ? {
       color: '#D97706',
       weight: 4,
@@ -2120,7 +2626,6 @@
 
     currentDrivePolyline = L.polyline(latLngs, polylineOptions).addTo(drivesMap);
 
-    // Custom start & end markers
     const startCoord = latLngs[0];
     const endCoord = latLngs[latLngs.length - 1];
 
@@ -2142,12 +2647,20 @@
       fillOpacity: 1
     }).addTo(drivesMap).bindPopup(`<b>终点${(drive && drive.is_synthetic) ? '（推算）' : ''}</b><br>${drive ? drive.end_location : ''}`);
 
-    // Fit map view
     drivesMap.fitBounds(currentDrivePolyline.getBounds(), { padding: [50, 50] });
   }
 
   function centerCurrentRoute() {
-    if (drivesMap && currentDrivePolyline) {
+    if (!drivesMap) return;
+    if (isLiveTripSelected && livePolyline && LiveTripTracker.points.length > 0) {
+      if (LiveTripTracker.points.length === 1 && LiveTripTracker.lastLat && LiveTripTracker.lastLng) {
+        drivesMap.setView([LiveTripTracker.lastLat, LiveTripTracker.lastLng], 15);
+      } else {
+        drivesMap.fitBounds(livePolyline.getBounds(), { padding: [50, 50] });
+      }
+      return;
+    }
+    if (currentDrivePolyline) {
       drivesMap.fitBounds(currentDrivePolyline.getBounds(), { padding: [50, 50] });
     }
   }
