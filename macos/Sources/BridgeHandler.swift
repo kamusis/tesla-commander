@@ -66,10 +66,48 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
             return
         }
 
+        if action == "resolve_destination" {
+            guard let query = params["query"] as? String, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                self.sendDestinationResultToUI(success: false, query: "", engine: "none", candidates: [], errorMessage: "查询内容不能为空")
+                return
+            }
+            let carLat = params["carLat"] as? Double
+            let carLng = params["carLng"] as? Double
+            let carAddress = params["carAddress"] as? String
+
+            var currentLoc: (Double, Double)? = nil
+            if let lat = carLat, let lng = carLng {
+                currentLoc = (lat, lng)
+            }
+
+            Task {
+                let result = await GeoResolver.shared.resolve(query: query, currentLocation: currentLoc, locationDesc: carAddress)
+                await MainActor.run {
+                    self.sendDestinationResultToUI(
+                        success: result.success,
+                        query: result.query,
+                        engine: result.engine,
+                        isFallback: result.isFallback,
+                        fallbackReason: result.fallbackReason,
+                        candidates: result.candidates.map { $0.toDictionary() },
+                        errorMessage: result.errorMessage
+                    )
+                }
+            }
+            return
+        }
+
         Task {
             do {
                 let res = try await client.executeCommand(action: action, params: params)
-                let msg = res.success ? "\(action) 已成功响应" : "响应: \(res.message)"
+                var msg = res.success ? "\(action) 已成功响应" : "响应: \(res.message)"
+                if action == "nav" && res.success {
+                    if let name = params["name"] as? String, !name.isEmpty {
+                        msg = "已成功推送到车机中控: \(name)"
+                    } else {
+                        msg = "导航目的地已成功推送到车机中控"
+                    }
+                }
                 await MainActor.run {
                     self.showToast(message: "指令已下发: \(msg)")
                     self.notifyCommandFinished(action: action, success: res.success, message: msg)
@@ -416,6 +454,34 @@ public final class BridgeHandler: NSObject, WKScriptMessageHandler {
             return
         }
         let js = "if (window.onDrivingPathLoaded) { window.onDrivingPathLoaded(\(driveId), \(jsonStr)); }"
+        webView?.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    /// Sends AI geocoded destination candidates back to the UI.
+    @MainActor
+    public func sendDestinationResultToUI(
+        success: Bool,
+        query: String,
+        engine: String,
+        isFallback: Bool = false,
+        fallbackReason: String? = nil,
+        candidates: [[String: Any]],
+        errorMessage: String? = nil
+    ) {
+        let payload: [String: Any] = [
+            "success": success,
+            "query": query,
+            "engine": engine,
+            "is_fallback": isFallback,
+            "fallback_reason": fallbackReason ?? "",
+            "candidates": candidates,
+            "error_message": errorMessage ?? ""
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let jsonStr = String(data: data, encoding: .utf8) else {
+            return
+        }
+        let js = "if (window.onDestinationResolved) { window.onDestinationResolved(\(jsonStr)); }"
         webView?.evaluateJavaScript(js, completionHandler: nil)
     }
 
