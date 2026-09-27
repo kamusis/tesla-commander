@@ -831,6 +831,11 @@
     }
 
     /* ── INTERACTIVE NAVIGATION MODAL ── */
+    html.modal-open,
+    body.modal-open {
+      overflow: hidden !important;
+      height: 100vh !important;
+    }
     .nav-modal-backdrop {
       position: fixed;
       inset: 0;
@@ -843,6 +848,8 @@
       justify-content: center;
       opacity: 0;
       pointer-events: none;
+      overscroll-behavior: contain;
+      touch-action: none;
       transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .nav-modal-backdrop.open {
@@ -862,6 +869,7 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      overscroll-behavior: contain;
       transform: translateY(16px) scale(0.98);
       transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
@@ -909,6 +917,7 @@
     .nav-modal-body {
       padding: 20px 24px;
       overflow-y: auto;
+      overscroll-behavior: contain;
       flex: 1;
       display: flex;
       flex-direction: column;
@@ -2042,10 +2051,50 @@
     savedLocation: ''
   };
 
+  let savedScrollY = 0;
+  let navWheelHandlerAttached = false;
+
   function openNavModal() {
     const modalEl = document.getElementById('nav-interactive-modal');
     if (!modalEl) return;
+
+    savedScrollY = window.scrollY || window.pageYOffset || 0;
     modalEl.classList.add('open');
+    document.documentElement.classList.add('modal-open');
+    document.body.classList.add('modal-open');
+
+    // Prevent wheel scroll chaining to background
+    if (!navWheelHandlerAttached) {
+      navWheelHandlerAttached = true;
+      modalEl.addEventListener('wheel', (e) => {
+        if (e.target && e.target.closest && e.target.closest('#nav-preview-map')) {
+          return;
+        }
+
+        let el = e.target;
+        let scrollable = null;
+        while (el && el !== modalEl) {
+          const style = window.getComputedStyle(el);
+          const canScroll = (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+          if (canScroll) {
+            scrollable = el;
+            break;
+          }
+          el = el.parentElement;
+        }
+
+        if (!scrollable) {
+          e.preventDefault();
+          return;
+        }
+
+        const atTop = scrollable.scrollTop <= 0 && e.deltaY < 0;
+        const atBottom = (scrollable.scrollTop + scrollable.clientHeight >= scrollable.scrollHeight - 1) && e.deltaY > 0;
+        if (atTop || atBottom) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+    }
 
     // Update car pos summary in modal
     const carPosEl = document.getElementById('nav-modal-car-pos');
@@ -2073,6 +2122,9 @@
   function closeNavModal() {
     const modalEl = document.getElementById('nav-interactive-modal');
     if (modalEl) modalEl.classList.remove('open');
+    document.documentElement.classList.remove('modal-open');
+    document.body.classList.remove('modal-open');
+    window.scrollTo(0, savedScrollY);
   }
 
   function handleNavBackdropClick(event) {
