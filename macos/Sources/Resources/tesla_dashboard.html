@@ -935,61 +935,79 @@
       </div>
 
       <div class="chart-grid-2x2">
-        <!-- Chart 1: Battery Gauge & Capacity -->
+        <!-- 1. GPS Position & Environment (大卡片) -->
         <div class="chart-card">
           <div class="chart-card-header">
-            <span class="chart-card-title">动力电池容量与充放电仪表盘</span>
+            <div>
+              <div class="card-label" style="margin-bottom:2px;">// GPS POSITION & ENVIRONMENT</div>
+              <span class="chart-card-title" id="gps-card-title">📍 当前驻车地理位置</span>
+            </div>
+            <span id="gps-motion-badge" class="chip" style="font-size:10px;font-weight:700;">已驻车 (P挡)</span>
+          </div>
+          <p id="gps-address" style="color:var(--muted);font-size:13px;margin:8px 0 12px 0;line-height:1.5;">--</p>
+          <div style="font-family:var(--font-mono);font-size:12px;background:var(--bg);padding:10px 12px;border:1px solid rgba(0,0,0,0.12);border-radius:4px;margin-bottom:14px;line-height:1.6;">
+            <span id="gps-coords">纬度 (Lat): -- | 经度 (Lng): --</span><br/>
+            <span id="gps-saved-location">已保存位置: --</span>
+          </div>
+
+          <div class="stat-grid" style="margin-bottom:14px;">
+            <div class="stat-cell">
+              <div class="stat-label">OUTSIDE TEMP</div>
+              <div id="gps-env-outside" class="stat-value" style="font-size:16px;">--°C</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-label">CABIN TEMP</div>
+              <div id="gps-env-inside" class="stat-value" style="font-size:16px;">--°C</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-label">DRIVE SPEED</div>
+              <div id="gps-env-speed" class="stat-value" style="font-size:16px;">0 km/h</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-label">TRANSMISSION</div>
+              <div id="gps-env-shift" class="stat-value" style="font-size:16px;">P 挡驻车</div>
+            </div>
+          </div>
+
+          <div style="margin-top:auto;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <a id="gps-maps-link" href="#" target="_blank" class="btn btn-primary" style="flex:1;justify-content:center;" onclick="openGoogleMaps(event)">在 Google Maps 查看位置 ↗</a>
+              <button id="gps-live-track-btn" class="btn" style="display:none;background:var(--gold);font-weight:700;" onclick="switchTab('drives'); selectLiveTrip();">🚗 实时路线跟踪 ↗</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Battery Gauge & Capacity (大卡片) -->
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <div>
+              <div class="card-label" style="margin-bottom:2px;">// BATTERY CAPACITY & SOC GAUGE</div>
+              <span class="chart-card-title">动力电池容量与充放电仪表盘</span>
+            </div>
             <span class="chip chip-green">LIVE</span>
           </div>
           <div id="chart-battery" class="chart-box"></div>
         </div>
 
-        <!-- Chart 2: 4-Wheel Tire Pressure Visualizer -->
+        <!-- 3. Historical Charges & Cost (大卡片) -->
         <div class="chart-card">
           <div class="chart-card-header">
-            <span class="chart-card-title">四轮胎压实时矩阵 (Bar)</span>
-            <span class="chip">标称: 2.9 Bar</span>
-          </div>
-          <div class="tire-matrix">
-            <div class="tire-cell normal">
-              <div class="tire-name">前左轮 (FL)</div>
-              <div class="tire-val">2.975</div>
-              <div class="tire-status">● 气压正常</div>
+            <div>
+              <div class="card-label" style="margin-bottom:2px;">// RECENT CHARGING SESSIONS</div>
+              <span class="chart-card-title">近期充电会话充入电量 (kWh)</span>
             </div>
-            <div class="tire-cell normal">
-              <div class="tire-name">前右轮 (FR)</div>
-              <div class="tire-val">2.975</div>
-              <div class="tire-status">● 气压正常</div>
-            </div>
-            <div class="tire-cell normal">
-              <div class="tire-name">后左轮 (RL)</div>
-              <div class="tire-val">2.875</div>
-              <div class="tire-status">● 气压正常</div>
-            </div>
-            <div class="tire-cell normal">
-              <div class="tire-name">后右轮 (RR)</div>
-              <div class="tire-val">2.9</div>
-              <div class="tire-status">● 气压正常</div>
-            </div>
-          </div>
-          <div style="margin-top:16px;font-size:12px;color:var(--muted);background:var(--bg);border:1px solid rgba(0,0,0,0.1);padding:10px;border-radius:4px;">
-            胎压传感器上次在线同步时间为 10 分钟前。当前爱知县户外气温 25.5°C，冷车胎压稳定在标称值（2.9 bar）±0.08 bar 范围。
-          </div>
-        </div>
-
-        <!-- Chart 3: Historical Charges & Cost -->
-        <div class="chart-card">
-          <div class="chart-card-header">
-            <span class="chart-card-title">近期充电会话充入电量 (kWh)</span>
             <span class="chip chip-blue">最近 8 次</span>
           </div>
           <div id="chart-charges" class="chart-box"></div>
         </div>
 
-        <!-- Chart 4: Historical Drives Energy -->
+        <!-- 4. Historical Drives Energy (大卡片) -->
         <div class="chart-card">
           <div class="chart-card-header">
-            <span class="chart-card-title">近期行程行驶能耗分布 (kWh)</span>
+            <div>
+              <div class="card-label" style="margin-bottom:2px;">// RECENT DRIVING ENERGY CONSUMPTION</div>
+              <span class="chart-card-title">近期行程行驶能耗分布 (kWh)</span>
+            </div>
             <span class="chip">最近 8 次</span>
           </div>
           <div id="chart-drives" class="chart-box"></div>
@@ -997,45 +1015,62 @@
       </div>
     </section>
 
-    <!-- LOCATION & RECENT ALERTS -->
-    <section style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-      <div class="hero-card">
-        <div class="card-label">// GPS POSITION & ENVIRONMENT</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <div id="gps-card-title" style="font-size:16px;font-weight:800;">📍 车辆当前地理位置</div>
-          <span id="gps-motion-badge" class="chip" style="font-size:10px;font-weight:700;">已驻车 (P挡)</span>
-        </div>
-        <p id="gps-address" style="color:var(--muted);font-size:13px;margin-bottom:12px;">--</p>
-        <div style="font-family:var(--font-mono);font-size:12px;background:var(--bg);padding:10px;border:1px solid rgba(0,0,0,0.12);border-radius:4px;margin-bottom:12px;">
-          <span id="gps-coords">纬度 (Lat): -- | 经度 (Lng): --</span><br/>
-          <span id="gps-saved-location">已保存位置: --</span>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <a id="gps-maps-link" href="#" target="_blank" class="btn btn-primary" onclick="openGoogleMaps(event)">在 Google Maps 查看位置 ↗</a>
-          <button id="gps-live-track-btn" class="btn" style="display:none;background:var(--gold);font-weight:700;" onclick="switchTab('drives'); selectLiveTrip();">🚗 实时路线跟踪 ↗</button>
-        </div>
+    <!-- CHASSIS SENSORS & SYSTEM ALERTS -->
+    <section style="margin-top:16px;">
+      <div class="section-header">
+        <div class="section-title">底盘传感器与系统事件告警</div>
+        <div class="section-meta">REALTIME CHASSIS TPMS & FIRMWARE ALERTS</div>
       </div>
-
-      <div class="hero-card">
-        <div class="card-label">// FIRMWARE EVENT LOG</div>
-        <div style="font-size:16px;font-weight:800;margin-bottom:6px;">🔔 车辆固件与系统最近告警</div>
-        <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
-
-          <div style="padding:8px 10px;background:var(--bg);border:1px solid rgba(0,0,0,0.1);border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
-            <span class="mono" style="font-size:11px;font-weight:700;">UI_a266_DashcamRecentBufferDurationReduced</span>
-            <span class="chip" style="font-size:10px;">Recorded</span>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <!-- 5. 4-Wheel Tire Pressure Visualizer (小卡片) -->
+        <div class="hero-card">
+          <div class="card-label">// TIRE PRESSURE MONITORING SYSTEM</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="font-size:16px;font-weight:800;">🛞 四轮胎压实时矩阵 (Bar)</div>
+            <span class="chip" style="font-size:10px;">标称: 2.9 Bar</span>
           </div>
-
-          <div style="padding:8px 10px;background:var(--bg);border:1px solid rgba(0,0,0,0.1);border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
-            <span class="mono" style="font-size:11px;font-weight:700;">EPBL_a195_parkForDriverIsLeaving</span>
-            <span class="chip" style="font-size:10px;">Recorded</span>
+          <div class="tire-matrix" style="margin-top:10px;gap:8px;">
+            <div class="tire-cell normal" style="padding:10px;">
+              <div class="tire-name">前左轮 (FL)</div>
+              <div id="tpms-fl" class="tire-val" style="font-size:18px;margin:2px 0;">2.98</div>
+              <div class="tire-status">● 气压正常</div>
+            </div>
+            <div class="tire-cell normal" style="padding:10px;">
+              <div class="tire-name">前右轮 (FR)</div>
+              <div id="tpms-fr" class="tire-val" style="font-size:18px;margin:2px 0;">2.98</div>
+              <div class="tire-status">● 气压正常</div>
+            </div>
+            <div class="tire-cell normal" style="padding:10px;">
+              <div class="tire-name">后左轮 (RL)</div>
+              <div id="tpms-rl" class="tire-val" style="font-size:18px;margin:2px 0;">2.88</div>
+              <div class="tire-status">● 气压正常</div>
+            </div>
+            <div class="tire-cell normal" style="padding:10px;">
+              <div class="tire-name">后右轮 (RR)</div>
+              <div id="tpms-rr" class="tire-val" style="font-size:18px;margin:2px 0;">2.90</div>
+              <div class="tire-status">● 气压正常</div>
+            </div>
           </div>
+        </div>
 
-          <div style="padding:8px 10px;background:var(--bg);border:1px solid rgba(0,0,0,0.1);border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
-            <span class="mono" style="font-size:11px;font-weight:700;">DI_a166_driverLeft</span>
-            <span class="chip" style="font-size:10px;">Recorded</span>
+        <!-- 6. Firmware Event Log (小卡片) -->
+        <div class="hero-card">
+          <div class="card-label">// FIRMWARE EVENT LOG</div>
+          <div style="font-size:16px;font-weight:800;margin-bottom:6px;">🔔 车辆固件与系统最近告警</div>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+            <div style="padding:8px 10px;background:var(--bg);border:1px solid rgba(0,0,0,0.1);border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
+              <span class="mono" style="font-size:11px;font-weight:700;">UI_a266_DashcamRecentBufferDurationReduced</span>
+              <span class="chip" style="font-size:10px;">Recorded</span>
+            </div>
+            <div style="padding:8px 10px;background:var(--bg);border:1px solid rgba(0,0,0,0.1);border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
+              <span class="mono" style="font-size:11px;font-weight:700;">EPBL_a195_parkForDriverIsLeaving</span>
+              <span class="chip" style="font-size:10px;">Recorded</span>
+            </div>
+            <div style="padding:8px 10px;background:var(--bg);border:1px solid rgba(0,0,0,0.1);border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
+              <span class="mono" style="font-size:11px;font-weight:700;">DI_a166_driverLeft</span>
+              <span class="chip" style="font-size:10px;">Recorded</span>
+            </div>
           </div>
-
         </div>
       </div>
     </section>
@@ -1673,6 +1708,18 @@
       }
     }
 
+    const envSpeedEl = document.getElementById('gps-env-speed');
+    if (envSpeedEl) {
+      envSpeedEl.textContent = Math.round(currentSpeed) + ' km/h';
+    }
+    const envShiftEl = document.getElementById('gps-env-shift');
+    if (envShiftEl) {
+      if (currentShift === 'R') envShiftEl.textContent = 'R 挡倒车';
+      else if (currentShift === 'D') envShiftEl.textContent = 'D 挡行驶';
+      else if (currentShift === 'N') envShiftEl.textContent = 'N 挡空挡';
+      else envShiftEl.textContent = 'P 挡驻车';
+    }
+
     // 2. Battery & SOC
     if (frame.battery_level !== undefined) {
       const soc = Number(frame.battery_level);
@@ -1762,6 +1809,9 @@
 
       const ctrlCabinTemp = document.getElementById('ctrl-cabin-temp');
       if (ctrlCabinTemp) ctrlCabinTemp.textContent = temp + '°C';
+
+      const envInside = document.getElementById('gps-env-inside');
+      if (envInside) envInside.textContent = temp + '°C';
     }
     if (frame.outside_temp !== undefined || frame.target_temp !== undefined) {
       const scTempSub = document.getElementById('sc-temp-sub');
@@ -1769,6 +1819,10 @@
         const outStr = frame.outside_temp !== undefined ? Number(frame.outside_temp).toFixed(1) + '°C' : '--°C';
         const targetStr = frame.target_temp !== undefined ? Number(frame.target_temp).toFixed(1) + '°C' : '22.0°C';
         scTempSub.textContent = '车外: ' + outStr + ' (目标 ' + targetStr + ')';
+      }
+      if (frame.outside_temp !== undefined) {
+        const envOutside = document.getElementById('gps-env-outside');
+        if (envOutside) envOutside.textContent = Number(frame.outside_temp).toFixed(1) + '°C';
       }
     }
     if (frame.is_climate_on !== undefined) {
@@ -1790,6 +1844,15 @@
       const avg = ((fl + fr + rl + rr) / 4).toFixed(2);
       const scTpms = document.getElementById('sc-tpms');
       if (scTpms) scTpms.innerHTML = avg + ' <span style="font-size:14px;">bar</span>';
+
+      const elFl = document.getElementById('tpms-fl');
+      const elFr = document.getElementById('tpms-fr');
+      const elRl = document.getElementById('tpms-rl');
+      const elRr = document.getElementById('tpms-rr');
+      if (elFl) elFl.textContent = fl.toFixed(2);
+      if (elFr) elFr.textContent = fr.toFixed(2);
+      if (elRl) elRl.textContent = rl.toFixed(2);
+      if (elRr) elRr.textContent = rr.toFixed(2);
     }
 
     // 8. Odometer & Locks
