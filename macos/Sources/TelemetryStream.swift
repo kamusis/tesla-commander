@@ -139,6 +139,10 @@ public final class TelemetryStream {
                         if let lat = locDict["latitude"] as? Double { normalizedFrame["latitude"] = lat }
                         if let lng = locDict["longitude"] as? Double { normalizedFrame["longitude"] = lng }
                     }
+                case "GpsHeading", "Heading":
+                    if let val = numVal { normalizedFrame["heading"] = val }
+                case "Power":
+                    if let val = numVal { normalizedFrame["power"] = val }
                 case "Gear", "ShiftState":
                     if let s = strVal { normalizedFrame["shift_state"] = s }
                 default:
